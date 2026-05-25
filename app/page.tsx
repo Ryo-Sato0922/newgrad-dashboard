@@ -10,7 +10,6 @@ import {
   LineChart,
   PanelsTopLeft,
   Plus,
-  RotateCcw,
   Save,
   Table2,
   Trash2,
@@ -122,15 +121,6 @@ export default function Home() {
   }), [data]);
   const executive = getExecutiveKpis(kpiData);
 
-  function resetData() {
-    if (isSupabaseConfigured) {
-      setSavedMessage("Supabase利用中は初期化せず、各行の削除を使ってください");
-      return;
-    }
-    setData(initialData);
-    setSavedMessage("初期データに戻しました");
-  }
-
   function afterSave(message: string) {
     setSavedMessage(message);
     window.setTimeout(() => setSavedMessage(isSupabaseConfigured ? "Supabaseに保存されます" : "ブラウザ内に自動保存されます"), 2200);
@@ -216,10 +206,6 @@ export default function Home() {
               <button onClick={() => setActive("sales")} className="inline-flex items-center gap-2 rounded-md border border-yellow-300 bg-accent px-3 py-2 text-xs font-semibold text-ink shadow-sm hover:bg-accent-strong">
                 <Plus className="size-4" />
                 FCST入力
-              </button>
-              <button onClick={resetData} className="inline-flex items-center gap-2 rounded-md border border-line px-3 py-2 text-xs font-medium text-muted hover:bg-panel">
-                <RotateCcw className="size-4" />
-                初期化
               </button>
             </div>
           </div>

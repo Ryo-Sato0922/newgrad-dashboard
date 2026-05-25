@@ -18,7 +18,7 @@ import {
   X
 } from "lucide-react";
 import { FunnelChart, GrossProfitChart, KpiTrendChart, SimpleBarChart } from "@/components/charts";
-import { Card, MetricCard, Pill, ProgressBar, SectionHeader, cn } from "@/components/ui";
+import { Card, MetricCard, MetricChange, Pill, ProgressBar, SectionHeader, cn } from "@/components/ui";
 import { companies as seedCompanies, experiments as seedExperiments, funnels as seedFunnels, kpiSnapshots as seedKpiSnapshots, surveys as seedSurveys, unitEconomics as seedUnitEconomics } from "@/lib/data";
 import {
   KpiData,
@@ -42,7 +42,7 @@ import { deleteCompanyRecord, deleteFunnelRecord, fetchAppData, isSupabaseConfig
 import { AppData, Company, CompanyStatus, Experiment, ExperimentStatus, Funnel, Survey, UnitEconomics } from "@/lib/types";
 
 type DrilldownRow = { label: string; value: string; meta?: string; companyId?: string };
-type ExecutiveCard = { label: string; value: string; sub: string; tone?: "neutral" | "good" | "warn" | "bad"; formula: string; rows: DrilldownRow[] };
+type ExecutiveCard = { label: string; value: string; sub: string; tone?: "neutral" | "good" | "warn" | "bad"; formula: string; rows: DrilldownRow[]; change?: MetricChange };
 
 const storageKey = "timee-newgrad-poc-os-data-v4";
 
@@ -223,6 +223,7 @@ export default function Home() {
 function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompany: (company: Company) => void }) {
   const [drilldown, setDrilldown] = useState<ExecutiveCard | null>(null);
   const kpis = getExecutiveKpis(data);
+  const weekly = getWeeklyExecutiveComparison(data);
   const wonCompanies = data.companies.filter((company) => company.status === "受注");
   const averageArpu = Math.round(sum(wonCompanies, (company) => company.expectedMrr) / Math.max(1, wonCompanies.length));
   const leadTimeCompanies = wonCompanies.filter((company) => getLeadTimeDays(company) !== null);
@@ -244,22 +245,22 @@ function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompa
     companyId: data.companies.some((company) => company.id === funnel.companyId) ? funnel.companyId : undefined
   }));
   const cards: ExecutiveCard[] = [
-    { label: "導入社数", value: `${kpis.introduced}社`, sub: `目標進捗 ${pct(kpis.progress)}`, formula: "ステータスが受注の企業数", rows: companyRows(wonCompanies, (company) => company.contractStartDate ?? "-") },
-    { label: "提案社数", value: `${kpis.proposals}社`, sub: "提案日あり", formula: "提案日が入力されている企業数", rows: companyRows(proposalCompanies, (company) => company.proposalDate ?? "-") },
-    { label: "商談化率", value: pct(kpis.meetingRate), sub: "リード以外 / 全社", formula: `${dealStageCompanies.length}社 / ${data.companies.length}社`, rows: companyRows(dealStageCompanies, (company) => company.status) },
-    { label: "受注率", value: pct(kpis.winRate), sub: "受注 / 提案", formula: `${wonCompanies.length}社 / ${proposalCompanies.length}社`, rows: companyRows(proposalCompanies, (company) => company.status) },
-    { label: "提案→受注CVR", value: pct(kpis.winRate), sub: `${kpis.introduced}社 / ${kpis.proposals}社`, formula: "受注企業数 / 提案済み企業数", rows: companyRows(proposalCompanies, (company) => company.status) },
-    { label: "受注リードタイム", value: `${num(averageLeadTime)}日`, sub: `初回商談→申込書回収 / ${leadTimeCompanies.length}社`, formula: "受注企業ごとの 申込書回収日 - 初回商談日 の平均", rows: leadTimeCompanies.map((company) => ({ label: company.name, value: `${num(getLeadTimeDays(company) ?? 0)}日`, meta: `${company.initialMeetingDate ?? "-"} → ${company.applicationReceivedDate ?? "-"}`, companyId: company.id })) },
-    { label: "MRR合計", value: yen(kpis.mrr), sub: "契約開始済み", formula: "受注企業の想定MRR合計", rows: companyRows(wonCompanies, (company) => yen(company.expectedMrr)) },
-    { label: "ARPU", value: yen(averageArpu), sub: `受注${wonCompanies.length}社の平均MRR`, formula: "受注企業のMRR合計 / 受注企業数", rows: companyRows(wonCompanies, (company) => yen(company.expectedMrr)) },
-    { label: "成功報酬累計", value: yen(kpis.successFees), sub: "入社数ベース", formula: "入社予定者数 × 400,000円", rows: latestFunnels.map((funnel) => ({ label: getCompanyName(data, funnel.companyId), value: yen(funnel.joins * 400000), meta: `入社 ${num(funnel.joins)}人`, companyId: data.companies.some((company) => company.id === funnel.companyId) ? funnel.companyId : undefined })) },
-    { label: "ワーカー送客数", value: `${num(kpis.referrals)}人`, sub: "応募数", formula: "企業別応募数の合計", rows: funnelRows((funnel) => funnel.applications, "人") },
-    { label: "職場体験実施数", value: `${num(kpis.shifts)}件`, sub: "タイミー勤務", formula: "企業別タイミー勤務数の合計", rows: funnelRows((funnel) => funnel.shifts, "件") },
-    { label: "面談数", value: `${num(kpis.interviews)}件`, sub: "面談希望", formula: "企業別面談希望数の合計", rows: funnelRows((funnel) => funnel.interviewRequests, "件") },
-    { label: "内定者数", value: `${num(kpis.offers)}人`, sub: "選考通過", formula: "企業別内定数の合計", rows: funnelRows((funnel) => funnel.offers, "人") },
-    { label: "入社予定者数", value: `${num(kpis.joins)}人`, sub: "入社承諾", formula: "企業別入社予定者数の合計", rows: funnelRows((funnel) => funnel.joins, "人") },
-    { label: "1社あたり粗利", value: yen(kpis.grossProfitPerCompany), sub: "MRR + 成功報酬 - 運用費", tone: "good", formula: "(MRR + 成功報酬 - 月間運用コスト) / 受注企業数", rows: [{ label: "MRR", value: yen(kpis.mrr) }, { label: "成功報酬", value: yen(kpis.successFees) }, { label: "月間運用コスト", value: `-${yen(latestUnit?.operatingCost ?? 0)}` }, { label: "受注企業数", value: `${num(wonCompanies.length)}社` }] },
-    { label: "10社目標進捗率", value: pct(kpis.progress), sub: "3ヶ月PoC", tone: "good", formula: "導入社数 / 10社目標", rows: companyRows(wonCompanies, (company) => company.contractStartDate ?? "-") }
+    { label: "導入社数", value: `${kpis.introduced}社`, sub: `目標進捗 ${pct(kpis.progress)}`, change: weekly.introduced, formula: "ステータスが受注の企業数", rows: companyRows(wonCompanies, (company) => company.contractStartDate ?? "-") },
+    { label: "提案社数", value: `${kpis.proposals}社`, sub: "提案日あり", change: weekly.proposals, formula: "提案日が入力されている企業数", rows: companyRows(proposalCompanies, (company) => company.proposalDate ?? "-") },
+    { label: "商談化率", value: pct(kpis.meetingRate), sub: "リード以外 / 全社", change: weekly.meetingRate, formula: `${dealStageCompanies.length}社 / ${data.companies.length}社`, rows: companyRows(dealStageCompanies, (company) => company.status) },
+    { label: "受注率", value: pct(kpis.winRate), sub: "受注 / 提案", change: weekly.winRate, formula: `${wonCompanies.length}社 / ${proposalCompanies.length}社`, rows: companyRows(proposalCompanies, (company) => company.status) },
+    { label: "提案→受注CVR", value: pct(kpis.winRate), sub: `${kpis.introduced}社 / ${kpis.proposals}社`, change: weekly.winRate, formula: "受注企業数 / 提案済み企業数", rows: companyRows(proposalCompanies, (company) => company.status) },
+    { label: "受注リードタイム", value: `${num(averageLeadTime)}日`, sub: `初回商談→申込書回収 / ${leadTimeCompanies.length}社`, change: weekly.leadTime, formula: "受注企業ごとの 申込書回収日 - 初回商談日 の平均", rows: leadTimeCompanies.map((company) => ({ label: company.name, value: `${num(getLeadTimeDays(company) ?? 0)}日`, meta: `${company.initialMeetingDate ?? "-"} → ${company.applicationReceivedDate ?? "-"}`, companyId: company.id })) },
+    { label: "MRR合計", value: yen(kpis.mrr), sub: "契約開始済み", change: weekly.mrr, formula: "受注企業の想定MRR合計", rows: companyRows(wonCompanies, (company) => yen(company.expectedMrr)) },
+    { label: "ARPU", value: yen(averageArpu), sub: `受注${wonCompanies.length}社の平均MRR`, change: weekly.arpu, formula: "受注企業のMRR合計 / 受注企業数", rows: companyRows(wonCompanies, (company) => yen(company.expectedMrr)) },
+    { label: "成功報酬累計", value: yen(kpis.successFees), sub: "入社数ベース", change: weekly.successFees, formula: "入社予定者数 × 400,000円", rows: latestFunnels.map((funnel) => ({ label: getCompanyName(data, funnel.companyId), value: yen(funnel.joins * 400000), meta: `入社 ${num(funnel.joins)}人`, companyId: data.companies.some((company) => company.id === funnel.companyId) ? funnel.companyId : undefined })) },
+    { label: "ワーカー送客数", value: `${num(kpis.referrals)}人`, sub: "応募数", change: weekly.referrals, formula: "企業別応募数の合計", rows: funnelRows((funnel) => funnel.applications, "人") },
+    { label: "職場体験実施数", value: `${num(kpis.shifts)}件`, sub: "タイミー勤務", change: weekly.shifts, formula: "企業別タイミー勤務数の合計", rows: funnelRows((funnel) => funnel.shifts, "件") },
+    { label: "面談数", value: `${num(kpis.interviews)}件`, sub: "面談希望", change: weekly.interviews, formula: "企業別面談希望数の合計", rows: funnelRows((funnel) => funnel.interviewRequests, "件") },
+    { label: "内定者数", value: `${num(kpis.offers)}人`, sub: "選考通過", change: weekly.offers, formula: "企業別内定数の合計", rows: funnelRows((funnel) => funnel.offers, "人") },
+    { label: "入社予定者数", value: `${num(kpis.joins)}人`, sub: "入社承諾", change: weekly.joins, formula: "企業別入社予定者数の合計", rows: funnelRows((funnel) => funnel.joins, "人") },
+    { label: "1社あたり粗利", value: yen(kpis.grossProfitPerCompany), sub: "MRR + 成功報酬 - 運用費", change: weekly.grossProfitPerCompany, tone: "good", formula: "(MRR + 成功報酬 - 月間運用コスト) / 受注企業数", rows: [{ label: "MRR", value: yen(kpis.mrr) }, { label: "成功報酬", value: yen(kpis.successFees) }, { label: "月間運用コスト", value: `-${yen(latestUnit?.operatingCost ?? 0)}` }, { label: "受注企業数", value: `${num(wonCompanies.length)}社` }] },
+    { label: "10社目標進捗率", value: pct(kpis.progress), sub: "3ヶ月PoC", change: weekly.progress, tone: "good", formula: "導入社数 / 10社目標", rows: companyRows(wonCompanies, (company) => company.contractStartDate ?? "-") }
   ];
   return (
     <div className="space-y-6">
@@ -267,7 +268,7 @@ function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompa
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <button key={card.label} type="button" onClick={() => setDrilldown(card)} className="text-left">
-            <MetricCard label={card.label} value={card.value} sub={`${card.sub} / クリックで内訳`} tone={card.tone ?? "neutral"} />
+            <MetricCard label={card.label} value={card.value} sub={`${card.sub} / クリックで内訳`} tone={card.tone ?? "neutral"} change={card.change} />
           </button>
         ))}
       </div>
@@ -1455,6 +1456,101 @@ function normalizeAppData(data: AppData): AppData {
       applicationReceivedDate: company.applicationReceivedDate ?? company.contractTargetDate ?? null
     }))
   };
+}
+
+function getWeeklyExecutiveComparison(data: KpiData): Record<string, MetricChange> {
+  const previousData = getDataAsOf(data, getPreviousMonday());
+  const current = getExecutiveKpis(data);
+  const previous = getExecutiveKpis(previousData);
+  const currentWon = data.companies.filter((company) => company.status === "受注");
+  const previousWon = previousData.companies.filter((company) => company.status === "受注");
+  const currentLeadTime = getAverageLeadTime(currentWon);
+  const previousLeadTime = getAverageLeadTime(previousWon);
+  const currentArpu = Math.round(current.mrr / Math.max(1, current.introduced));
+  const previousArpu = Math.round(previous.mrr / Math.max(1, previous.introduced));
+
+  return {
+    introduced: makeMetricChange(current.introduced, previous.introduced, "社"),
+    proposals: makeMetricChange(current.proposals, previous.proposals, "社"),
+    meetingRate: makeMetricChange(current.meetingRate, previous.meetingRate, "pt", true),
+    winRate: makeMetricChange(current.winRate, previous.winRate, "pt", true),
+    leadTime: makeMetricChange(currentLeadTime, previousLeadTime, "日"),
+    mrr: makeMetricChange(current.mrr, previous.mrr, "円"),
+    arpu: makeMetricChange(currentArpu, previousArpu, "円"),
+    successFees: makeMetricChange(current.successFees, previous.successFees, "円"),
+    referrals: makeMetricChange(current.referrals, previous.referrals, "人"),
+    shifts: makeMetricChange(current.shifts, previous.shifts, "件"),
+    interviews: makeMetricChange(current.interviews, previous.interviews, "件"),
+    offers: makeMetricChange(current.offers, previous.offers, "人"),
+    joins: makeMetricChange(current.joins, previous.joins, "人"),
+    grossProfitPerCompany: makeMetricChange(current.grossProfitPerCompany, previous.grossProfitPerCompany, "円"),
+    progress: makeMetricChange(current.progress, previous.progress, "pt", true)
+  };
+}
+
+function getDataAsOf(data: KpiData, cutoff: string): KpiData {
+  const companies = data.companies
+    .filter((company) => {
+      const firstDate = company.initialMeetingDate ?? company.proposalDate ?? company.contractStartDate ?? company.applicationReceivedDate;
+      return !firstDate || firstDate <= cutoff;
+    })
+    .map((company) => getCompanyAsOf(company, cutoff));
+  const companyIds = new Set(companies.map((company) => company.id));
+
+  return {
+    companies,
+    funnels: getLatestFunnels(data.funnels.filter((funnel) => companyIds.has(funnel.companyId) && funnel.recordedAt <= cutoff)),
+    surveys: data.surveys.filter((survey) => companyIds.has(survey.companyId)),
+    unitEconomics: data.unitEconomics.filter((item) => `${item.month}-01`.slice(0, 10) <= cutoff)
+  };
+}
+
+function getCompanyAsOf(company: Company, cutoff: string): Company {
+  const wonDate = company.applicationReceivedDate ?? company.contractStartDate ?? company.contractTargetDate;
+  if (company.status === "受注" && wonDate && wonDate <= cutoff) return company;
+  if (company.status === "失注") return company;
+  if (company.proposalDate && company.proposalDate <= cutoff) return { ...company, status: "提案中" };
+  if (company.initialMeetingDate && company.initialMeetingDate <= cutoff) return { ...company, status: "初回商談" };
+  return { ...company, status: "リード" };
+}
+
+function getPreviousMonday() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  const day = date.getDay();
+  const daysSinceMonday = (day + 6) % 7;
+  date.setDate(date.getDate() - daysSinceMonday - 7);
+  return formatLocalDate(date);
+}
+
+function makeMetricChange(current: number, previous: number, unit: string, isRate = false): MetricChange {
+  const diff = current - previous;
+  const direction = diff > 0 ? "up" : diff < 0 ? "down" : "flat";
+  const sign = diff > 0 ? "+" : diff < 0 ? "-" : "±";
+  const amountValue = isRate ? `${Math.abs(Math.round(diff * 10) / 10)}${unit}` : formatDeltaAmount(Math.abs(Math.round(diff)), unit);
+  const percentValue = previous === 0 ? (diff === 0 ? "0%" : `${diff > 0 ? "+" : "-"}100%`) : `${sign}${Math.abs(Math.round((diff / previous) * 1000) / 10)}%`;
+  return {
+    amount: `${sign}${amountValue}`,
+    percent: percentValue,
+    direction
+  };
+}
+
+function formatDeltaAmount(value: number, unit: string) {
+  if (unit === "円") return yen(value);
+  return `${num(value)}${unit}`;
+}
+
+function formatLocalDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getAverageLeadTime(companies: Company[]) {
+  const leadTimeCompanies = companies.filter((company) => getLeadTimeDays(company) !== null);
+  return Math.round(sum(leadTimeCompanies, (company) => getLeadTimeDays(company) ?? 0) / Math.max(1, leadTimeCompanies.length));
 }
 
 function getLeadTimeDays(company: Company) {

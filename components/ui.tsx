@@ -10,7 +10,13 @@ export function Card({ className, children }: { className?: string; children: Re
   return <section className={cn("rounded-lg border border-line bg-white p-4 shadow-soft", className)}>{children}</section>;
 }
 
-export function MetricCard({ label, value, sub, tone = "neutral" }: { label: string; value: string; sub?: string; tone?: "neutral" | "good" | "warn" | "bad" }) {
+export type MetricChange = {
+  amount: string;
+  percent: string;
+  direction: "up" | "down" | "flat";
+};
+
+export function MetricCard({ label, value, sub, tone = "neutral", change }: { label: string; value: string; sub?: string; tone?: "neutral" | "good" | "warn" | "bad"; change?: MetricChange }) {
   const tones = {
     neutral: "text-ink",
     good: "text-success",
@@ -23,7 +29,21 @@ export function MetricCard({ label, value, sub, tone = "neutral" }: { label: str
       <div className="absolute left-0 top-0 h-full w-1 bg-accent" />
       <div className="pl-2">
         <div className="text-xs font-semibold text-muted">{label}</div>
-        <div className={cn("mt-2 text-2xl font-semibold tracking-normal", tones[tone])}>{value}</div>
+        <div className="mt-2 flex flex-wrap items-baseline gap-2">
+          <div className={cn("text-2xl font-semibold tracking-normal", tones[tone])}>{value}</div>
+          {change ? (
+            <div
+              className={cn(
+                "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold",
+                change.direction === "up" && "border-green-200 bg-green-50 text-success",
+                change.direction === "down" && "border-red-200 bg-red-50 text-danger",
+                change.direction === "flat" && "border-line bg-panel text-ink"
+              )}
+            >
+              前週比 {change.amount} / {change.percent}
+            </div>
+          ) : null}
+        </div>
         {sub ? <div className="mt-1 text-xs leading-5 text-muted">{sub}</div> : null}
       </div>
     </Card>

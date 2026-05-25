@@ -17,7 +17,7 @@ import {
   UsersRound,
   X
 } from "lucide-react";
-import { FunnelChart, GrossProfitChart, KpiTrendChart, SimpleBarChart } from "@/components/charts";
+import { FunnelChart, GrossProfitChart, HiringTrendChart, RevenueTrendChart, SimpleBarChart } from "@/components/charts";
 import { Card, MetricCard, MetricChange, Pill, ProgressBar, SectionHeader, cn } from "@/components/ui";
 import { companies as seedCompanies, experiments as seedExperiments, funnels as seedFunnels, kpiSnapshots as seedKpiSnapshots, surveys as seedSurveys, unitEconomics as seedUnitEconomics } from "@/lib/data";
 import {
@@ -224,6 +224,7 @@ function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompa
   const [drilldown, setDrilldown] = useState<ExecutiveCard | null>(null);
   const kpis = getExecutiveKpis(data);
   const weekly = getWeeklyExecutiveComparison(data);
+  const trendData = getExecutiveTrendData(data);
   const wonCompanies = data.companies.filter((company) => company.status === "受注");
   const averageArpu = Math.round(sum(wonCompanies, (company) => company.expectedMrr) / Math.max(1, wonCompanies.length));
   const leadTimeCompanies = wonCompanies.filter((company) => getLeadTimeDays(company) !== null);
@@ -272,23 +273,30 @@ function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompa
           </button>
         ))}
       </div>
-      <div className="grid gap-4 xl:grid-cols-[1.35fr_0.65fr]">
+      <div className="grid gap-4 xl:grid-cols-2">
         <Card className="p-5">
           <div className="mb-4 flex items-center justify-between">
-            <div className="text-sm font-semibold">KPI推移</div>
+            <div className="text-sm font-semibold">KPI推移: 内定・入社</div>
             <Pill className="border-yellow-200 bg-yellow-50 text-muted">monthly</Pill>
           </div>
-          <KpiTrendChart data={displayKpiSnapshots} />
+          <HiringTrendChart data={trendData} />
         </Card>
         <Card className="p-5">
-          <div className="text-sm font-semibold">価値仮説の現在地</div>
-          <div className="mt-4 space-y-4">
-            <ValueSignal label="再勤務率" value={pct(rate(sum(data.funnels, (f) => f.repeatShifts), sum(data.funnels, (f) => f.shifts)))} score={rate(sum(data.funnels, (f) => f.repeatShifts), sum(data.funnels, (f) => f.shifts))} />
-            <ValueSignal label="面談化率" value={pct(rate(sum(data.funnels, (f) => f.interviewRequests), sum(data.funnels, (f) => f.shifts)))} score={rate(sum(data.funnels, (f) => f.interviewRequests), sum(data.funnels, (f) => f.shifts)) * 2.5} />
-            <ValueSignal label="内定率" value={pct(rate(sum(data.funnels, (f) => f.offers), sum(data.funnels, (f) => f.screenings)))} score={rate(sum(data.funnels, (f) => f.offers), sum(data.funnels, (f) => f.screenings)) * 1.6} />
+          <div className="mb-4 flex items-center justify-between">
+            <div className="text-sm font-semibold">KPI推移: MRR・ARR見込み</div>
+            <Pill className="border-yellow-200 bg-yellow-50 text-muted">monthly</Pill>
           </div>
+          <RevenueTrendChart data={trendData} />
         </Card>
       </div>
+      <Card className="p-5">
+        <div className="text-sm font-semibold">価値仮説の現在地</div>
+        <div className="mt-4 space-y-4">
+          <ValueSignal label="再勤務率" value={pct(rate(sum(data.funnels, (f) => f.repeatShifts), sum(data.funnels, (f) => f.shifts)))} score={rate(sum(data.funnels, (f) => f.repeatShifts), sum(data.funnels, (f) => f.shifts))} />
+          <ValueSignal label="面談化率" value={pct(rate(sum(data.funnels, (f) => f.interviewRequests), sum(data.funnels, (f) => f.shifts)))} score={rate(sum(data.funnels, (f) => f.interviewRequests), sum(data.funnels, (f) => f.shifts)) * 2.5} />
+          <ValueSignal label="内定率" value={pct(rate(sum(data.funnels, (f) => f.offers), sum(data.funnels, (f) => f.screenings)))} score={rate(sum(data.funnels, (f) => f.offers), sum(data.funnels, (f) => f.screenings)) * 1.6} />
+        </div>
+      </Card>
       {drilldown ? (
         <ExecutiveDrilldownModal
           card={drilldown}
@@ -1528,6 +1536,37 @@ function normalizeAppData(data: AppData): AppData {
       applicationReceivedDate: company.applicationReceivedDate ?? company.contractTargetDate ?? null
     }))
   };
+}
+
+function getExecutiveTrendData(data: KpiData) {
+  const months = new Set<string>();
+  data.funnels.forEach((funnel) => months.add(funnel.recordedAt.slice(0, 7)));
+  data.companies.forEach((company) => {
+    [company.initialMeetingDate, company.proposalDate, company.applicationReceivedDate, company.contractStartDate].forEach((date) => {
+      if (date) months.add(date.slice(0, 7));
+    });
+  });
+  data.unitEconomics.forEach((item) => months.add(item.month.slice(0, 7)));
+  if (months.size === 0) months.add(formatLocalDate(new Date()).slice(0, 7));
+
+  return [...months].sort().map((month) => {
+    const monthData = getDataAsOf(data, getMonthEnd(month));
+    const kpis = getExecutiveKpis(monthData);
+    const arrForecastCompanies = monthData.companies.filter((company) => company.status !== "失注" && getArrForecast(company) > 0);
+
+    return {
+      month,
+      offers: kpis.offers,
+      joins: kpis.joins,
+      mrr: kpis.mrr,
+      arrForecast: sum(arrForecastCompanies, getArrForecast)
+    };
+  });
+}
+
+function getMonthEnd(month: string) {
+  const [year, monthIndex] = month.split("-").map(Number);
+  return formatLocalDate(new Date(year, monthIndex, 0));
 }
 
 function getWeeklyExecutiveComparison(data: KpiData): Record<string, MetricChange> {

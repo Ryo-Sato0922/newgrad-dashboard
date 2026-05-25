@@ -31,20 +31,33 @@ const tooltipStyle = {
   boxShadow: "0 10px 28px rgba(31, 26, 19, 0.08)"
 };
 
-export function KpiTrendChart({ data }: { data: Array<Record<string, string | number>> }) {
+export function HiringTrendChart({ data }: { data: Array<Record<string, string | number>> }) {
+  return (
+    <ResponsiveContainer width="100%" height={280}>
+      <BarChart data={data} margin={{ top: 10, right: 8, bottom: 0, left: -14 }}>
+        <CartesianGrid stroke={grid} vertical={false} />
+        <XAxis dataKey="month" tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={tooltipStyle} />
+        <Legend />
+        <Bar dataKey="offers" name="内定" fill={green} radius={[4, 4, 0, 0]} />
+        <Bar dataKey="joins" name="入社" fill={amber} radius={[4, 4, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function RevenueTrendChart({ data }: { data: Array<Record<string, string | number>> }) {
   return (
     <ResponsiveContainer width="100%" height={280}>
       <ComposedChart data={data} margin={{ top: 10, right: 8, bottom: 0, left: 0 }}>
         <CartesianGrid stroke={grid} vertical={false} />
         <XAxis dataKey="month" tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} />
-        <YAxis yAxisId="left" tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} />
-        <YAxis yAxisId="right" orientation="right" tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${Number(v) / 10000}万`} />
-        <Tooltip contentStyle={tooltipStyle} formatter={(value, name) => (name === "mrr" || name === "grossProfit" ? yen(Number(value)) : value)} />
+        <YAxis tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${Number(v) / 10000}万`} />
+        <Tooltip contentStyle={tooltipStyle} formatter={(value) => yen(Number(value))} />
         <Legend />
-        <Bar yAxisId="left" dataKey="offers" name="内定" fill={green} radius={[4, 4, 0, 0]} />
-        <Bar yAxisId="left" dataKey="joins" name="入社" fill={amber} radius={[4, 4, 0, 0]} />
-        <Line yAxisId="right" type="monotone" dataKey="mrr" name="MRR" stroke={black} strokeWidth={2.5} dot={{ r: 3, fill: yellow }} />
-        <Area yAxisId="right" type="monotone" dataKey="grossProfit" name="粗利" fill="#fff3bf" stroke={yellow} />
+        <Line type="monotone" dataKey="mrr" name="MRR" stroke={black} strokeWidth={2.5} dot={{ r: 3, fill: yellow }} />
+        <Line type="monotone" dataKey="arrForecast" name="ARR見込み" stroke={green} strokeWidth={2.5} dot={{ r: 3, fill: green }} />
       </ComposedChart>
     </ResponsiveContainer>
   );

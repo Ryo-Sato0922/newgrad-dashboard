@@ -172,7 +172,7 @@ export default function Home() {
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-yellow-200 bg-yellow-50 px-2.5 py-1 text-xs font-medium text-muted">
                 <Activity className="size-3.5" />
-                2026年5月 PoC Management
+                FY27 新卒事業PoC Management
               </div>
               <h1 className="mt-2 text-xl font-semibold tracking-normal text-ink">新卒採用事業 Dashboard</h1>
               <p className="mt-1 text-sm text-muted">営業、ファネル、採用成果、採算をひとつの検証ラインで見るPoCダッシュボード</p>

@@ -290,6 +290,65 @@ export async function fetchAppData(): Promise<AppData> {
   };
 }
 
+export function prepareAppDataForSupabase(data: AppData): AppData {
+  const idMap = new Map<string, string>();
+  const normalizeId = (id: string) => {
+    if (isUuid(id)) return id;
+    const existing = idMap.get(id);
+    if (existing) return existing;
+    const next = crypto.randomUUID();
+    idMap.set(id, next);
+    return next;
+  };
+
+  const companies = data.companies.map((company) => ({ ...company, id: normalizeId(company.id) }));
+  const companyIds = new Set(companies.map((company) => company.id));
+  const funnels = data.funnels
+    .map((funnel) => ({ ...funnel, id: normalizeId(funnel.id), companyId: normalizeId(funnel.companyId) }))
+    .filter((funnel) => companyIds.has(funnel.companyId));
+  const surveys = data.surveys
+    .map((survey) => ({ ...survey, id: normalizeId(survey.id), companyId: normalizeId(survey.companyId) }))
+    .filter((survey) => companyIds.has(survey.companyId));
+
+  return {
+    ...data,
+    companies,
+    funnels,
+    surveys
+  };
+}
+
+export async function upsertAppData(data: AppData) {
+  const client = requireSupabase();
+  const prepared = prepareAppDataForSupabase(data);
+
+  if (prepared.companies.length > 0) {
+    const { error } = await client.from("companies").upsert(prepared.companies.map(toCompanyRow));
+    if (error) throw error;
+  }
+
+  if (prepared.unitEconomics.length > 0) {
+    const { error } = await client.from("unit_economics").upsert(prepared.unitEconomics.map(toUnitEconomicsRow), { onConflict: "month" });
+    if (error) throw error;
+  }
+
+  if (prepared.funnels.length > 0) {
+    const { error } = await client.from("worker_funnels").upsert(prepared.funnels.map(toFunnelRow));
+    if (error) throw error;
+  }
+
+  if (prepared.surveys.length > 0) {
+    const { error } = await client.from("student_surveys").upsert(prepared.surveys.map(toSurveyRow));
+    if (error) throw error;
+  }
+
+  return prepared;
+}
+
+function isUuid(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 export async function upsertCompany(company: Company) {
   const { error } = await requireSupabase().from("companies").upsert(toCompanyRow(company));
   if (error) throw error;

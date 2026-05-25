@@ -38,7 +38,7 @@ import {
   sum,
   yen
 } from "@/lib/kpis";
-import { deleteCompanyRecord, deleteFunnelRecord, fetchAppData, isSupabaseConfigured, upsertCompany, upsertFunnel, upsertSurvey, upsertUnitEconomics } from "@/lib/supabase-store";
+import { deleteCompanyRecord, deleteFunnelRecord, fetchAppData, isSupabaseConfigured, upsertAppData, upsertCompany, upsertFunnel, upsertSurvey, upsertUnitEconomics } from "@/lib/supabase-store";
 import { AppData, Company, CompanyStatus, Experiment, ExperimentStatus, Funnel, Survey, UnitEconomics } from "@/lib/types";
 
 type DrilldownRow = { label: string; value: string; meta?: string; companyId?: string };
@@ -84,8 +84,11 @@ export default function Home() {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [data, setData] = useState<AppData>(initialData);
   const [savedMessage, setSavedMessage] = useState(isSupabaseConfigured ? "Supabaseに保存されます" : "ブラウザ内に自動保存されます");
+  const [hasLocalBackup, setHasLocalBackup] = useState(false);
 
   useEffect(() => {
+    setHasLocalBackup(Boolean(window.localStorage.getItem(storageKey)));
+
     if (isSupabaseConfigured) {
       fetchAppData()
         .then((remoteData) => {
@@ -131,6 +134,31 @@ export default function Home() {
   function afterSave(message: string) {
     setSavedMessage(message);
     window.setTimeout(() => setSavedMessage(isSupabaseConfigured ? "Supabaseに保存されます" : "ブラウザ内に自動保存されます"), 2200);
+  }
+
+  async function migrateLocalStorageToSupabase() {
+    if (!isSupabaseConfigured) {
+      setSavedMessage("Supabase環境変数が未設定です");
+      return;
+    }
+
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) {
+      setSavedMessage("移行できるブラウザ保存データがありません");
+      return;
+    }
+
+    try {
+      const localData = normalizeAppData({ ...initialData, ...JSON.parse(raw) });
+      const migratedData = await upsertAppData(localData);
+      setData(migratedData);
+      window.localStorage.removeItem(storageKey);
+      setHasLocalBackup(false);
+      setSavedMessage("ブラウザ保存データをSupabaseへ移行しました");
+      window.setTimeout(() => setSavedMessage("Supabaseに保存されます"), 2600);
+    } catch {
+      setSavedMessage("Supabaseへの移行に失敗しました");
+    }
   }
 
   return (
@@ -179,6 +207,12 @@ export default function Home() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Pill className="border-yellow-200 bg-yellow-50 text-ink">{savedMessage}</Pill>
+              {isSupabaseConfigured && hasLocalBackup ? (
+                <button onClick={migrateLocalStorageToSupabase} className="inline-flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs font-semibold text-success hover:bg-green-100">
+                  <Save className="size-4" />
+                  ブラウザ保存データを移行
+                </button>
+              ) : null}
               <button onClick={() => setActive("sales")} className="inline-flex items-center gap-2 rounded-md border border-yellow-300 bg-accent px-3 py-2 text-xs font-semibold text-ink shadow-sm hover:bg-accent-strong">
                 <Plus className="size-4" />
                 FCST入力

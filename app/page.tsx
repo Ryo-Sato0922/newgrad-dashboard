@@ -1050,12 +1050,28 @@ function CompanyDeleteList({ companies, onDelete }: { companies: Company[]; onDe
 }
 
 function FunnelDeleteList({ companies, funnels, onEdit, onDelete }: { companies: Company[]; funnels: Funnel[]; onEdit: (funnel: Funnel) => void; onDelete: (id: string) => void }) {
+  const [showAll, setShowAll] = useState(false);
+  const sortedFunnels = [...funnels].sort((a, b) => b.recordedAt.localeCompare(a.recordedAt));
+  const visibleFunnels = showAll ? sortedFunnels : sortedFunnels.slice(0, 3);
+  const hiddenCount = Math.max(0, sortedFunnels.length - 3);
+
   return (
     <Card>
-      <FormTitle title="登録済みファネル" />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <FormTitle title="登録済みファネル" />
+        {hiddenCount > 0 ? (
+          <button
+            type="button"
+            onClick={() => setShowAll((value) => !value)}
+            className="inline-flex h-8 items-center rounded-md border border-line px-3 text-xs font-medium text-muted hover:bg-panel"
+          >
+            {showAll ? "最新3件だけ表示" : `すべて表示（+${hiddenCount}件）`}
+          </button>
+        ) : null}
+      </div>
       <div className="mt-4 space-y-2">
         {funnels.length === 0 ? <EmptyState message="ファネルデータはありません。" /> : null}
-        {[...funnels].sort((a, b) => b.recordedAt.localeCompare(a.recordedAt)).map((funnel) => {
+        {visibleFunnels.map((funnel) => {
           const company = companies.find((item) => item.id === funnel.companyId);
           return (
             <DeleteRow

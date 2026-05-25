@@ -268,7 +268,7 @@ function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompa
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <button key={card.label} type="button" onClick={() => setDrilldown(card)} className="text-left">
-            <MetricCard label={card.label} value={card.value} sub={`${card.sub} / クリックで内訳`} tone={card.tone ?? "neutral"} change={card.change} />
+            <MetricCard label={card.label} value={card.value} sub={card.sub} tone={card.tone ?? "neutral"} change={card.change} />
           </button>
         ))}
       </div>
@@ -493,6 +493,7 @@ function WorkerView({
         description="流入施策から入社までの遷移と、体験による行動変容を企業別・業界別に比較します。"
         action={<button onClick={() => { setEditingFunnel(null); setIsFunnelPanelOpen(true); }} className="inline-flex items-center gap-2 rounded-md border border-yellow-300 bg-accent px-3 py-2 text-xs font-semibold text-ink shadow-sm hover:bg-accent-strong"><Plus className="size-4" />ファネルを入力</button>}
       />
+      <FunnelDeleteList companies={data.companies} funnels={data.funnels} onEdit={editFunnel} onDelete={deleteFunnel} />
       <div className="grid gap-3 md:grid-cols-3">
         {inflowSources.map((source) => (
           <MetricCard key={source.name} label={source.name} value={`${num(source.value)}件`} sub={`応募転換 ${pct(source.conversionRate)}`} tone={source.conversionRate >= 0.12 ? "good" : "neutral"} />
@@ -504,7 +505,6 @@ function WorkerView({
         <Card><div className="mb-4 text-sm font-semibold">企業別比較</div><SimpleBarChart data={companyCompare} xKey="name" bars={[{ key: "応募", name: "応募", color: "#f8c900" }, { key: "面談化率", name: "面談化率", color: "#168a5f" }]} /></Card>
       </div>
       <Card><div className="mb-4 text-sm font-semibold">ファネル推移</div><SimpleBarChart data={trend} xKey="date" bars={[{ key: "応募", name: "応募", color: "#f8c900" }, { key: "勤務", name: "勤務", color: "#168a5f" }, { key: "内定", name: "内定", color: "#c78100" }]} /></Card>
-      <FunnelDeleteList companies={data.companies} funnels={data.funnels} onEdit={editFunnel} onDelete={deleteFunnel} />
       <Card><div className="mb-4 text-sm font-semibold">業界別比較</div><SimpleBarChart data={getIndustryFunnelData(data)} xKey="industry" bars={[{ key: "repeatRate", name: "再勤務率", color: "#f8c900" }, { key: "interviewRate", name: "面談化率", color: "#168a5f" }, { key: "offerRate", name: "内定率", color: "#c78100" }]} /></Card>
       <SidePanel title={editingFunnel ? "ファネルを編集" : "ファネルを入力"} open={isFunnelPanelOpen} onClose={() => { setIsFunnelPanelOpen(false); setEditingFunnel(null); }}>
         <FunnelForm

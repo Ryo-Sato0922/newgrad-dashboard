@@ -201,7 +201,7 @@ export default function Home() {
         <div className="space-y-6 p-4 sm:p-6">
           {active === "executive" && <ExecutiveView data={kpiData} onSelectCompany={setSelectedCompany} />}
           {active === "sales" && <SalesView data={kpiData} setData={setData} afterSave={afterSave} mode={pipelineMode} setMode={setPipelineMode} onSelect={setSelectedCompany} />}
-          {active === "worker" && <WorkerView data={{ ...kpiData, funnels: data.funnels }} setData={setData} afterSave={afterSave} />}
+          {active === "worker" && <WorkerView data={{ ...kpiData, funnels: data.funnels }} setData={setData} afterSave={afterSave} onSelectCompany={setSelectedCompany} />}
           {active === "hiring" && <HiringView data={kpiData} />}
           {active === "unit" && <UnitView data={kpiData} setData={setData} afterSave={afterSave} />}
         </div>
@@ -440,18 +440,51 @@ function Kanban({ companies, onSelect }: { companies: Company[]; onSelect: (comp
 function WorkerView({
   data,
   setData,
-  afterSave
+  afterSave,
+  onSelectCompany
 }: {
   data: KpiData;
   setData: React.Dispatch<React.SetStateAction<AppData>>;
   afterSave: (message: string) => void;
+  onSelectCompany: (company: Company) => void;
 }) {
   const [isFunnelPanelOpen, setIsFunnelPanelOpen] = useState(false);
   const [editingFunnel, setEditingFunnel] = useState<Funnel | null>(null);
+  const [workerDrilldown, setWorkerDrilldown] = useState<ExecutiveCard | null>(null);
   const latestFunnels = getLatestFunnels(data.funnels);
   const inflowSources = getInflowSourceData(latestFunnels);
   const workerTotals = getWorkerFunnelTotals(latestFunnels);
   const weekly = getWeeklyWorkerComparison(data);
+  const workerRows = (value: (funnel: Funnel) => number, suffix: string): DrilldownRow[] => latestFunnels.map((funnel) => ({
+    label: getCompanyName(data, funnel.companyId),
+    value: `${num(value(funnel))}${suffix}`,
+    meta: `${funnel.recordedAt} / 応募 ${num(funnel.applications)}人 / 勤務 ${num(funnel.shifts)}件`,
+    companyId: data.companies.some((company) => company.id === funnel.companyId) ? funnel.companyId : undefined
+  }));
+  const inflowKeyMap: Record<string, keyof Pick<Funnel, "brazeDeliveries" | "calls" | "surveyInterviews">> = {
+    Braze配信: "brazeDeliveries",
+    架電: "calls",
+    "アンケート/IV": "surveyInterviews"
+  };
+  const inflowCards: ExecutiveCard[] = inflowSources.map((source) => {
+    const key = inflowKeyMap[source.name];
+    return {
+      label: source.name,
+      value: `${num(source.value)}件`,
+      sub: `応募転換 ${pct(source.conversionRate)}`,
+      tone: source.conversionRate >= 0.12 ? "good" : "neutral",
+      change: weekly.inflow[source.name],
+      formula: `企業別最新ファネルの${source.name}合計`,
+      rows: workerRows((funnel) => Number(funnel[key] ?? 0), "件")
+    };
+  });
+  const funnelCards: ExecutiveCard[] = [
+    { label: "応募", value: `${num(workerTotals.applications)}人`, sub: "Worker Funnel", change: weekly.applications, formula: "企業別最新ファネルの応募数合計", rows: workerRows((funnel) => funnel.applications, "人") },
+    { label: "タイミー勤務", value: `${num(workerTotals.shifts)}件`, sub: "職場体験実施", change: weekly.shifts, formula: "企業別最新ファネルのタイミー勤務数合計", rows: workerRows((funnel) => funnel.shifts, "件") },
+    { label: "面談希望", value: `${num(workerTotals.interviewRequests)}件`, sub: "勤務後の意思表示", change: weekly.interviewRequests, formula: "企業別最新ファネルの面談希望数合計", rows: workerRows((funnel) => funnel.interviewRequests, "件") },
+    { label: "内定", value: `${num(workerTotals.offers)}人`, sub: "選考通過", change: weekly.offers, formula: "企業別最新ファネルの内定数合計", rows: workerRows((funnel) => funnel.offers, "人") },
+    { label: "入社", value: `${num(workerTotals.joins)}人`, sub: "入社承諾", change: weekly.joins, formula: "企業別最新ファネルの入社数合計", rows: workerRows((funnel) => funnel.joins, "人") }
+  ];
   const companyCompare = data.companies.map((company) => {
     const funnel = latestFunnels.find((item) => item.companyId === company.id);
     return {
@@ -498,16 +531,18 @@ function WorkerView({
       />
       <FunnelDeleteList companies={data.companies} funnels={data.funnels} onEdit={editFunnel} onDelete={deleteFunnel} />
       <div className="grid gap-3 md:grid-cols-3">
-        {inflowSources.map((source) => (
-          <MetricCard key={source.name} label={source.name} value={`${num(source.value)}件`} sub={`応募転換 ${pct(source.conversionRate)}`} tone={source.conversionRate >= 0.12 ? "good" : "neutral"} change={weekly.inflow[source.name]} />
+        {inflowCards.map((card) => (
+          <button key={card.label} type="button" onClick={() => setWorkerDrilldown(card)} className="text-left">
+            <MetricCard label={card.label} value={card.value} sub={card.sub} tone={card.tone ?? "neutral"} change={card.change} />
+          </button>
         ))}
       </div>
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <MetricCard label="応募" value={`${num(workerTotals.applications)}人`} sub="Worker Funnel" change={weekly.applications} />
-        <MetricCard label="タイミー勤務" value={`${num(workerTotals.shifts)}件`} sub="職場体験実施" change={weekly.shifts} />
-        <MetricCard label="面談希望" value={`${num(workerTotals.interviewRequests)}件`} sub="勤務後の意思表示" change={weekly.interviewRequests} />
-        <MetricCard label="内定" value={`${num(workerTotals.offers)}人`} sub="選考通過" change={weekly.offers} />
-        <MetricCard label="入社" value={`${num(workerTotals.joins)}人`} sub="入社承諾" change={weekly.joins} />
+        {funnelCards.map((card) => (
+          <button key={card.label} type="button" onClick={() => setWorkerDrilldown(card)} className="text-left">
+            <MetricCard label={card.label} value={card.value} sub={card.sub} tone={card.tone ?? "neutral"} change={card.change} />
+          </button>
+        ))}
       </div>
       <Card><div className="mb-4 text-sm font-semibold">流入ファネル</div><SimpleBarChart data={inflowSources} xKey="name" bars={[{ key: "value", name: "流入数", color: "#f8c900" }, { key: "applications", name: "応募数", color: "#168a5f" }]} /></Card>
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
@@ -516,6 +551,17 @@ function WorkerView({
       </div>
       <Card><div className="mb-4 text-sm font-semibold">ファネル推移</div><SimpleBarChart data={trend} xKey="date" bars={[{ key: "応募", name: "応募", color: "#f8c900" }, { key: "勤務", name: "勤務", color: "#168a5f" }, { key: "内定", name: "内定", color: "#c78100" }]} /></Card>
       <Card><div className="mb-4 text-sm font-semibold">業界別比較</div><SimpleBarChart data={getIndustryFunnelData(data)} xKey="industry" bars={[{ key: "repeatRate", name: "再勤務率", color: "#f8c900" }, { key: "interviewRate", name: "面談化率", color: "#168a5f" }, { key: "offerRate", name: "内定率", color: "#c78100" }]} /></Card>
+      {workerDrilldown ? (
+        <ExecutiveDrilldownModal
+          card={workerDrilldown}
+          companies={data.companies}
+          onSelectCompany={(company) => {
+            setWorkerDrilldown(null);
+            onSelectCompany(company);
+          }}
+          onClose={() => setWorkerDrilldown(null)}
+        />
+      ) : null}
       <SidePanel title={editingFunnel ? "ファネルを編集" : "ファネルを入力"} open={isFunnelPanelOpen} onClose={() => { setIsFunnelPanelOpen(false); setEditingFunnel(null); }}>
         <FunnelForm
           companies={data.companies}

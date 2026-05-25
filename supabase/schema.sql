@@ -44,6 +44,7 @@ create table worker_funnels (
   screenings integer not null default 0,
   offers integer not null default 0,
   joins integer not null default 0,
+  previous_month_applications integer not null default 0,
   unique (company_id, month)
 );
 

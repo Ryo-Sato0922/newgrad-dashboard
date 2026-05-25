@@ -15,6 +15,15 @@ const seedData: KpiData = {
   unitEconomics: seedUnitEconomics
 };
 
+const defaultUnitEconomics: UnitEconomics = {
+  month: "2026-05",
+  operatingCost: 0,
+  grossMarginRate: 0.71,
+  cohort: "Default",
+  cohortCompanies: 0,
+  retainedCompanies: 0
+};
+
 export const yen = (value: number) => new Intl.NumberFormat("ja-JP", { style: "currency", currency: "JPY", maximumFractionDigits: 0 }).format(value);
 export const num = (value: number) => new Intl.NumberFormat("ja-JP").format(Math.round(value));
 export const pct = (value: number) => `${Math.round(value * 10) / 10}%`;
@@ -50,7 +59,8 @@ export function getExecutiveKpis(data: KpiData = seedData) {
   const interviews = sum(funnels, (funnel) => funnel.interviewRequests);
   const offers = sum(funnels, (funnel) => funnel.offers);
   const joins = sum(funnels, (funnel) => funnel.joins);
-  const grossProfit = mrr + successFees - unitEconomics[unitEconomics.length - 1].operatingCost;
+  const currentUnit = unitEconomics[unitEconomics.length - 1] ?? defaultUnitEconomics;
+  const grossProfit = mrr + successFees - currentUnit.operatingCost;
   const cac = Math.round(sum(companies, (company) => company.acquisitionCost) / Math.max(1, won.length));
 
   return {
@@ -199,7 +209,7 @@ export function getLtvCac(data: KpiData = seedData) {
 export function getUnitRows(data: KpiData = seedData) {
   const { companies, unitEconomics } = data;
   const funnels = getLatestFunnels(data.funnels);
-  const current = unitEconomics[unitEconomics.length - 1];
+  const current = unitEconomics[unitEconomics.length - 1] ?? defaultUnitEconomics;
   const hours = sum(companies, (company) => company.salesHours + company.csHours);
   const offers = sum(funnels, (funnel) => funnel.offers);
   return [

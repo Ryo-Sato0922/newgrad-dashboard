@@ -38,9 +38,9 @@ import {
   sum,
   yen
 } from "@/lib/kpis";
-import { Company, CompanyStatus, Experiment, ExperimentStatus, Funnel, Survey } from "@/lib/types";
+import { deleteCompanyRecord, deleteFunnelRecord, fetchAppData, isSupabaseConfigured, upsertCompany, upsertFunnel, upsertSurvey, upsertUnitEconomics } from "@/lib/supabase-store";
+import { AppData, Company, CompanyStatus, Experiment, ExperimentStatus, Funnel, Survey, UnitEconomics } from "@/lib/types";
 
-type AppData = KpiData & { experiments: Experiment[] };
 type DrilldownRow = { label: string; value: string; meta?: string; companyId?: string };
 type ExecutiveCard = { label: string; value: string; sub: string; tone?: "neutral" | "good" | "warn" | "bad"; formula: string; rows: DrilldownRow[] };
 
@@ -83,9 +83,20 @@ export default function Home() {
   const [pipelineMode, setPipelineMode] = useState<"table" | "kanban">("table");
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [data, setData] = useState<AppData>(initialData);
-  const [savedMessage, setSavedMessage] = useState("ブラウザ内に自動保存されます");
+  const [savedMessage, setSavedMessage] = useState(isSupabaseConfigured ? "Supabaseに保存されます" : "ブラウザ内に自動保存されます");
 
   useEffect(() => {
+    if (isSupabaseConfigured) {
+      fetchAppData()
+        .then((remoteData) => {
+          setData(normalizeAppData(remoteData));
+          setSavedMessage("Supabaseから読み込みました");
+          window.setTimeout(() => setSavedMessage("Supabaseに保存されます"), 2200);
+        })
+        .catch(() => setSavedMessage("Supabaseの読み込みに失敗しました"));
+      return;
+    }
+
     const raw = window.localStorage.getItem(storageKey);
     if (!raw) return;
     try {
@@ -96,6 +107,7 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    if (isSupabaseConfigured) return;
     window.localStorage.setItem(storageKey, JSON.stringify(data));
   }, [data]);
 
@@ -108,13 +120,17 @@ export default function Home() {
   const executive = getExecutiveKpis(kpiData);
 
   function resetData() {
+    if (isSupabaseConfigured) {
+      setSavedMessage("Supabase利用中は初期化せず、各行の削除を使ってください");
+      return;
+    }
     setData(initialData);
     setSavedMessage("初期データに戻しました");
   }
 
   function afterSave(message: string) {
     setSavedMessage(message);
-    window.setTimeout(() => setSavedMessage("ブラウザ内に自動保存されます"), 2200);
+    window.setTimeout(() => setSavedMessage(isSupabaseConfigured ? "Supabaseに保存されます" : "ブラウザ内に自動保存されます"), 2200);
   }
 
   return (
@@ -308,7 +324,10 @@ function SalesView({
   const arrForecastCompanies = data.companies.filter((company) => company.status !== "失注" && getArrForecast(company) > 0);
   const arrForecast = sum(arrForecastCompanies, getArrForecast);
 
-  function deleteCompany(id: string) {
+  async function deleteCompany(id: string) {
+    if (isSupabaseConfigured) {
+      await deleteCompanyRecord(id);
+    }
     setData((current) => ({
       ...current,
       companies: current.companies.filter((company) => company.id !== id),
@@ -452,7 +471,10 @@ function WorkerView({
       };
     });
 
-  function deleteFunnel(id: string) {
+  async function deleteFunnel(id: string) {
+    if (isSupabaseConfigured) {
+      await deleteFunnelRecord(id);
+    }
     setData((current) => ({ ...current, funnels: current.funnels.filter((funnel) => funnel.id !== id) }));
     setEditingFunnel((current) => (current?.id === id ? null : current));
     afterSave("ファネルを削除しました");
@@ -611,27 +633,27 @@ function UnitCostForm({
     operatingCost: String(current?.operatingCost ?? 0)
   });
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
-    setData((state) => {
-      const existing = state.unitEconomics.find((item) => item.month === form.month);
-      const nextItem = {
-        month: form.month,
-        operatingCost: toNumber(form.operatingCost),
-        grossMarginRate: existing?.grossMarginRate ?? current?.grossMarginRate ?? 0.71,
-        cohort: existing?.cohort ?? current?.cohort ?? form.month,
-        cohortCompanies: existing?.cohortCompanies ?? current?.cohortCompanies ?? 0,
-        retainedCompanies: existing?.retainedCompanies ?? current?.retainedCompanies ?? 0
-      };
-
-      return {
-        ...state,
-        unitEconomics: [
-          ...state.unitEconomics.filter((item) => item.month !== form.month),
-          nextItem
-        ].sort((a, b) => a.month.localeCompare(b.month))
-      };
-    });
+    const existing = data.unitEconomics.find((item) => item.month === form.month);
+    const nextItem: UnitEconomics = {
+      month: form.month,
+      operatingCost: toNumber(form.operatingCost),
+      grossMarginRate: existing?.grossMarginRate ?? current?.grossMarginRate ?? 0.71,
+      cohort: existing?.cohort ?? current?.cohort ?? form.month,
+      cohortCompanies: existing?.cohortCompanies ?? current?.cohortCompanies ?? 0,
+      retainedCompanies: existing?.retainedCompanies ?? current?.retainedCompanies ?? 0
+    };
+    if (isSupabaseConfigured) {
+      await upsertUnitEconomics(nextItem);
+    }
+    setData((state) => ({
+      ...state,
+      unitEconomics: [
+        ...state.unitEconomics.filter((item) => item.month !== form.month),
+        nextItem
+      ].sort((a, b) => a.month.localeCompare(b.month))
+    }));
     afterSave("月間運用コストを保存しました");
     onDone();
   }
@@ -746,7 +768,7 @@ function CompanyForm({ setData, afterSave, onDone }: { setData: React.Dispatch<R
     initialMeetingDate: "", applicationReceivedDate: "", proposalDate: "", contractTargetDate: "", contractStartDate: "", lostReason: "", memo: "", salesHours: "0", csHours: "0"
   });
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const company: Company = {
       id: crypto.randomUUID(),
@@ -771,6 +793,9 @@ function CompanyForm({ setData, afterSave, onDone }: { setData: React.Dispatch<R
       csHours: toNumber(form.csHours),
       acquisitionCost: 0
     };
+    if (isSupabaseConfigured) {
+      await upsertCompany(company);
+    }
     setData((current) => ({ ...current, companies: [company, ...current.companies] }));
     setForm({ ...form, name: "", owner: "", memo: "", lostReason: "" });
     afterSave("企業を追加しました");
@@ -864,7 +889,7 @@ function FunnelForm({
     });
   }, [editingFunnel]);
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const funnel: Funnel = {
       id: editingFunnel?.id ?? crypto.randomUUID(),
@@ -883,6 +908,9 @@ function FunnelForm({
       joins: toNumber(form.joins),
       previousMonthApplications: toNumber(form.previousMonthApplications)
     };
+    if (isSupabaseConfigured) {
+      await upsertFunnel(funnel);
+    }
     setData((current) => ({
       ...current,
       funnels: editingFunnel ? current.funnels.map((item) => (item.id === funnel.id ? funnel : item)) : [funnel, ...current.funnels]
@@ -923,7 +951,7 @@ function FunnelForm({
 function SurveyForm({ companies, setData, afterSave }: { companies: Company[]; setData: React.Dispatch<React.SetStateAction<AppData>>; afterSave: (message: string) => void }) {
   const [form, setForm] = useState({ companyId: companies[0]?.id ?? "", workerSegment: "", desireBefore: "50", desireAfter: "75", companyUnderstanding: "75", employeeUnderstanding: "75", repeatIntent: "75", screeningIntent: "65", comment: "", repeatShiftCount: "1", offer: "false", join: "false" });
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault();
     const survey: Survey = {
       id: crypto.randomUUID(),
@@ -940,6 +968,9 @@ function SurveyForm({ companies, setData, afterSave }: { companies: Company[]; s
       offer: form.offer === "true",
       join: form.join === "true"
     };
+    if (isSupabaseConfigured) {
+      await upsertSurvey(survey);
+    }
     setData((current) => ({ ...current, surveys: [survey, ...current.surveys] }));
     setForm({ ...form, workerSegment: "", comment: "" });
     afterSave("アンケートを追加しました");
@@ -1211,7 +1242,7 @@ function CompanyModal({
   });
   const funnel = data.funnels.find((item) => item.companyId === company.id);
 
-  function saveCompany(event: FormEvent) {
+  async function saveCompany(event: FormEvent) {
     event.preventDefault();
     const updated: Company = {
       ...company,
@@ -1235,12 +1266,18 @@ function CompanyModal({
       salesHours: toNumber(form.salesHours),
       csHours: toNumber(form.csHours)
     };
+    if (isSupabaseConfigured) {
+      await upsertCompany(updated);
+    }
     setData((current) => ({ ...current, companies: current.companies.map((item) => (item.id === updated.id ? updated : item)) }));
     onCompanyChange(updated);
     setIsEditing(false);
   }
 
-  function deleteCompany() {
+  async function deleteCompany() {
+    if (isSupabaseConfigured) {
+      await deleteCompanyRecord(company.id);
+    }
     setData((current) => ({
       ...current,
       companies: current.companies.filter((item) => item.id !== company.id),

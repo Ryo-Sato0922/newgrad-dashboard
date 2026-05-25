@@ -92,3 +92,11 @@ export type Experiment = {
   learning: string;
   nextAction: string;
 };
+
+export type AppData = {
+  companies: Company[];
+  funnels: Funnel[];
+  surveys: Survey[];
+  unitEconomics: UnitEconomics[];
+  experiments: Experiment[];
+};

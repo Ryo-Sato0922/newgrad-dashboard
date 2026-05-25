@@ -5,12 +5,12 @@ insert into companies (id, name, industry, owner, email, status, expected_mrr, c
 ('00000000-0000-0000-0000-000000000004', '東都ホテルズ', 'ホテル', '井上 大地', 'daichi.inoue@toto-hotels.jp', '契約交渉', 300000, 12, 500000, 5, '2026-04-12', null, '2026-04-12', '2026-06-01', null, null, '接客職の仕事内容理解を上げ、選考辞退を減らしたい。', 24, 12, 190000),
 ('00000000-0000-0000-0000-000000000005', 'Green Care Works', '介護', '小林 直人', 'naoto.kobayashi@gcw.jp', '提案中', 220000, 9, 420000, 4, '2026-05-02', null, '2026-05-02', '2026-06-20', null, null, '体験前後の心理的ハードル低下を示せると刺さる。', 15, 8, 130000);
 
-insert into worker_funnels (company_id, month, braze_deliveries, calls, survey_interviews, views, applications, shifts, repeat_shifts, interview_requests, screenings, offers, joins) values
-('00000000-0000-0000-0000-000000000001', '2026-05-01', 1200, 80, 45, 1420, 218, 126, 54, 31, 22, 8, 5),
-('00000000-0000-0000-0000-000000000002', '2026-05-01', 820, 64, 32, 980, 151, 86, 39, 21, 15, 5, 3),
-('00000000-0000-0000-0000-000000000003', '2026-05-01', 610, 42, 20, 720, 92, 49, 18, 12, 8, 2, 1),
-('00000000-0000-0000-0000-000000000004', '2026-05-01', 700, 58, 27, 810, 105, 58, 25, 17, 10, 3, 2),
-('00000000-0000-0000-0000-000000000005', '2026-05-01', 430, 36, 18, 540, 69, 32, 14, 9, 5, 1, 1);
+insert into worker_funnels (company_id, month, braze_deliveries, calls, survey_interviews, views, applications, shifts, repeat_shifts, interview_requests, screenings, offers, joins, previous_month_applications) values
+('00000000-0000-0000-0000-000000000001', '2026-05-01', 1200, 80, 45, 1420, 218, 126, 54, 31, 22, 8, 5, 172),
+('00000000-0000-0000-0000-000000000002', '2026-05-01', 820, 64, 32, 980, 151, 86, 39, 21, 15, 5, 3, 118),
+('00000000-0000-0000-0000-000000000003', '2026-05-01', 610, 42, 20, 720, 92, 49, 18, 12, 8, 2, 1, 74),
+('00000000-0000-0000-0000-000000000004', '2026-05-01', 700, 58, 27, 810, 105, 58, 25, 17, 10, 3, 2, 81),
+('00000000-0000-0000-0000-000000000005', '2026-05-01', 430, 36, 18, 540, 69, 32, 14, 9, 5, 1, 1, 52);
 
 insert into student_surveys (company_id, worker_segment, desire_before, desire_after, company_understanding, employee_understanding, repeat_intent, screening_intent, comment, repeat_shift_count, offer, join_plan) values
 ('00000000-0000-0000-0000-000000000001', '文系・接客経験あり', 58, 82, 86, 84, 88, 76, '社員の雰囲気が想像より良く、店長候補の仕事が具体的に見えた。', 3, true, true),

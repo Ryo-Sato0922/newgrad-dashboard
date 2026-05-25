@@ -182,7 +182,21 @@ Supabase SQL editorで以下を順に実行します。
 -- supabase/seed.sql
 ```
 
-現状のアプリはPoC初期レビュー用に `lib/data.ts` のダミーデータを直接読み込んでいます。Supabase接続に切り替える場合は、`companies`, `worker_funnels`, `student_surveys`, `kpi_snapshots`, `unit_economics`, `experiments` をAPI routeまたはServer Componentから取得してください。
+Supabaseに保存する場合は、VercelのProject Settings → Environment Variablesに以下を追加します。
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=xxxxx
+```
+
+この2つが設定されている場合、アプリはSupabaseから読み込み、FCST・Worker Funnel・Unit Economics・Surveyの入力/編集/削除をDBへ保存します。未設定の場合は、開発用としてこれまで通りブラウザ内の `localStorage` に保存されます。
+
+既存DBにあとから反映する場合は、`worker_funnels` に以下のカラムを追加してください。
+
+```sql
+alter table worker_funnels
+add column if not exists previous_month_applications integer not null default 0;
+```
 
 ## Data Entry
 
@@ -191,6 +205,7 @@ Supabase SQL editorで以下を順に実行します。
 - FCSTページ: 企業、営業ステータス、業界、所在地エリア、契約期間、ARR見込み、MRR、成功報酬、採用人数、初回商談日、申込書回収日、契約日、失注理由、工数
 - Workerページ: 企業、記録日、Braze配信、架電、アンケート/IV、閲覧、応募、勤務、リピート勤務、面談希望、選考参加、内定、入社
 - Unit Economicsページ: 対象月、月間運用コスト
-入力データは `localStorage` に保存され、各ダッシュボードへ即時反映されます。Supabase運用に移す場合は、この入力フォームの `setData` 部分を `insert` / `upsert` に置き換える構成が自然です。
+
+Supabase環境変数を設定している本番環境では、入力データはSupabaseに保存され、各ダッシュボードへ即時反映されます。
 
 各ページ下部にある「登録済み」リストから、企業、ファネルを1件ずつ削除できます。ファネルは企業×記録日で履歴管理でき、編集ボタンから過去レコードを更新できます。企業を削除すると、その企業に紐づくファネルも一緒に削除されます。

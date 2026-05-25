@@ -1534,12 +1534,12 @@ function getWeeklyWorkerComparison(data: KpiData): {
   const currentInflow = getInflowSourceData(currentFunnels);
 
   return {
-    inflow: Object.fromEntries(currentInflow.map((source) => [source.name, makeMetricChange(source.value, previousInflowByName[source.name] ?? 0, "件")])),
-    applications: makeMetricChange(currentTotals.applications, previousTotals.applications, "人"),
-    shifts: makeMetricChange(currentTotals.shifts, previousTotals.shifts, "件"),
-    interviewRequests: makeMetricChange(currentTotals.interviewRequests, previousTotals.interviewRequests, "件"),
-    offers: makeMetricChange(currentTotals.offers, previousTotals.offers, "人"),
-    joins: makeMetricChange(currentTotals.joins, previousTotals.joins, "人")
+    inflow: Object.fromEntries(currentInflow.map((source) => [source.name, makePositiveOnlyMetricChange(source.value, previousInflowByName[source.name] ?? 0, "件")])),
+    applications: makePositiveOnlyMetricChange(currentTotals.applications, previousTotals.applications, "人"),
+    shifts: makePositiveOnlyMetricChange(currentTotals.shifts, previousTotals.shifts, "件"),
+    interviewRequests: makePositiveOnlyMetricChange(currentTotals.interviewRequests, previousTotals.interviewRequests, "件"),
+    offers: makePositiveOnlyMetricChange(currentTotals.offers, previousTotals.offers, "人"),
+    joins: makePositiveOnlyMetricChange(currentTotals.joins, previousTotals.joins, "人")
   };
 }
 
@@ -1599,6 +1599,10 @@ function makeMetricChange(current: number, previous: number, unit: string, isRat
     percent: percentValue,
     direction
   };
+}
+
+function makePositiveOnlyMetricChange(current: number, previous: number, unit: string): MetricChange {
+  return current <= previous ? { amount: `±${formatDeltaAmount(0, unit)}`, percent: "0%", direction: "flat" } : makeMetricChange(current, previous, unit);
 }
 
 function formatDeltaAmount(value: number, unit: string) {

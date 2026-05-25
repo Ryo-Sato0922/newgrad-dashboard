@@ -1,0 +1,105 @@
+import { Company, Experiment, Funnel, KpiSnapshot, Survey, UnitEconomics } from "./types";
+
+export const companies: Company[] = [
+  {
+    id: "c1",
+    name: "サクラフーズ",
+    industry: "外食",
+    area: "関東",
+    owner: "高橋 美咲",
+    email: "",
+    status: "受注",
+    expectedMrr: 320000,
+    contractMonths: 12,
+    successFee: 450000,
+    expectedHires: 4,
+    initialMeetingDate: "2026-03-06",
+    applicationReceivedDate: "2026-03-24",
+    proposalDate: "2026-03-06",
+    contractTargetDate: "2026-03-24",
+    contractStartDate: "2026-04-01",
+    lostReason: null,
+    memo: "リピート勤務者の店長面談化に強い関心。現場理解を採用広報に転用したい。",
+    salesHours: 26,
+    csHours: 18,
+    acquisitionCost: 210000
+  }
+];
+
+export const funnels: Funnel[] = [
+  {
+    id: "f1",
+    companyId: "c1",
+    recordedAt: "2026-05-01",
+    brazeDeliveries: 1200,
+    calls: 80,
+    surveyInterviews: 45,
+    views: 1420,
+    applications: 218,
+    shifts: 126,
+    repeatShifts: 54,
+    interviewRequests: 31,
+    screenings: 22,
+    offers: 8,
+    joins: 5,
+    previousMonthApplications: 172
+  }
+];
+
+export const surveys: Survey[] = [
+  {
+    id: "s1",
+    companyId: "c1",
+    workerSegment: "文系・接客経験あり",
+    desireBefore: 58,
+    desireAfter: 82,
+    companyUnderstanding: 86,
+    employeeUnderstanding: 84,
+    repeatIntent: 88,
+    screeningIntent: 76,
+    comment: "社員の雰囲気が想像より良く、店長候補の仕事が具体的に見えた。",
+    repeatShiftCount: 3,
+    offer: true,
+    join: true
+  }
+];
+
+export const kpiSnapshots: KpiSnapshot[] = [
+  {
+    month: "2026-05",
+    companies: 1,
+    proposals: 1,
+    mrr: 320000,
+    successFees: 2250000,
+    referrals: 218,
+    experienceShifts: 126,
+    interviews: 31,
+    offers: 8,
+    joins: 5,
+    grossProfit: 1420000
+  }
+];
+
+export const unitEconomics: UnitEconomics[] = [
+  {
+    month: "2026-05",
+    operatingCost: 1080000,
+    grossMarginRate: 0.71,
+    cohort: "May",
+    cohortCompanies: 1,
+    retainedCompanies: 1
+  }
+];
+
+export const experiments: Experiment[] = [
+  {
+    id: "e1",
+    hypothesis: "リピート勤務2回以上で面談化率が上がる",
+    detail: "勤務後24時間以内に社員コメント付きの面談案内を送る。",
+    period: "2026/04/01 - 2026/04/30",
+    status: "成功",
+    result: "面談化率が上昇",
+    learning: "現場社員からの具体フィードバックが効く。",
+    nextAction: "社員コメントテンプレートを業界別に作成"
+  }
+];

@@ -1,0 +1,107 @@
+create extension if not exists "uuid-ossp";
+
+create type company_status as enum ('リード', '初回商談', '提案中', 'PoC', '契約交渉', '受注', '失注');
+create type experiment_status as enum ('未実施', '検証中', '成功', '失敗');
+
+create table companies (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  industry text not null,
+  area text not null default '関東',
+  owner text not null,
+  email text not null,
+  status company_status not null default 'リード',
+  expected_mrr integer not null default 0,
+  contract_months integer not null default 0,
+  success_fee integer not null default 0,
+  expected_hires integer not null default 0,
+  initial_meeting_date date,
+  application_received_date date,
+  proposal_date date,
+  contract_target_date date,
+  contract_start_date date,
+  lost_reason text,
+  memo text not null default '',
+  sales_hours numeric not null default 0,
+  cs_hours numeric not null default 0,
+  acquisition_cost integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table worker_funnels (
+  id uuid primary key default uuid_generate_v4(),
+  company_id uuid not null references companies(id) on delete cascade,
+  month date not null,
+  braze_deliveries integer not null default 0,
+  calls integer not null default 0,
+  survey_interviews integer not null default 0,
+  views integer not null default 0,
+  applications integer not null default 0,
+  shifts integer not null default 0,
+  repeat_shifts integer not null default 0,
+  interview_requests integer not null default 0,
+  screenings integer not null default 0,
+  offers integer not null default 0,
+  joins integer not null default 0,
+  unique (company_id, month)
+);
+
+create table student_surveys (
+  id uuid primary key default uuid_generate_v4(),
+  company_id uuid not null references companies(id) on delete cascade,
+  worker_segment text not null,
+  desire_before integer not null check (desire_before between 0 and 100),
+  desire_after integer not null check (desire_after between 0 and 100),
+  company_understanding integer not null check (company_understanding between 0 and 100),
+  employee_understanding integer not null check (employee_understanding between 0 and 100),
+  repeat_intent integer not null check (repeat_intent between 0 and 100),
+  screening_intent integer not null check (screening_intent between 0 and 100),
+  comment text not null default '',
+  repeat_shift_count integer not null default 0,
+  offer boolean not null default false,
+  join_plan boolean not null default false,
+  answered_at timestamptz not null default now()
+);
+
+create table kpi_snapshots (
+  id uuid primary key default uuid_generate_v4(),
+  month date not null unique,
+  companies integer not null default 0,
+  proposals integer not null default 0,
+  mrr integer not null default 0,
+  success_fees integer not null default 0,
+  referrals integer not null default 0,
+  experience_shifts integer not null default 0,
+  interviews integer not null default 0,
+  offers integer not null default 0,
+  joins integer not null default 0,
+  gross_profit integer not null default 0
+);
+
+create table unit_economics (
+  id uuid primary key default uuid_generate_v4(),
+  month date not null unique,
+  operating_cost integer not null default 0,
+  gross_margin_rate numeric not null default 0,
+  cohort text not null,
+  cohort_companies integer not null default 0,
+  retained_companies integer not null default 0
+);
+
+create table experiments (
+  id uuid primary key default uuid_generate_v4(),
+  hypothesis text not null,
+  detail text not null,
+  period daterange,
+  status experiment_status not null default '未実施',
+  result text not null default '',
+  learning text not null default '',
+  next_action text not null default '',
+  created_at timestamptz not null default now()
+);
+
+create index companies_status_idx on companies(status);
+create index companies_industry_idx on companies(industry);
+create index worker_funnels_company_month_idx on worker_funnels(company_id, month);
+create index student_surveys_company_idx on student_surveys(company_id);

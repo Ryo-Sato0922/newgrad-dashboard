@@ -324,6 +324,7 @@ function SalesView({
   const kpis = getExecutiveKpis(data);
   const arrForecastCompanies = data.companies.filter((company) => company.status !== "失注" && getArrForecast(company) > 0);
   const arrForecast = sum(arrForecastCompanies, getArrForecast);
+  const weekly = getWeeklySalesComparison(data);
 
   async function deleteCompany(id: string) {
     if (isSupabaseConfigured) {
@@ -346,12 +347,12 @@ function SalesView({
         action={<div className="flex flex-wrap gap-2"><button onClick={() => setIsAddingCompany(true)} className="inline-flex items-center gap-2 rounded-md border border-yellow-300 bg-accent px-3 py-2 text-xs font-semibold text-ink shadow-sm hover:bg-accent-strong"><Plus className="size-4" />案件を入力</button><div className="inline-flex rounded-md border border-line bg-white p-1"><button className={cn("grid size-8 place-items-center rounded text-muted", mode === "table" && "bg-accent text-ink")} onClick={() => setMode("table")} title="テーブル表示"><Table2 className="size-4" /></button><button className={cn("grid size-8 place-items-center rounded text-muted", mode === "kanban" && "bg-accent text-ink")} onClick={() => setMode("kanban")} title="カンバン表示"><PanelsTopLeft className="size-4" /></button></div></div>}
       />
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <MetricCard label="オープン案件 想定MRR" value={yen(totals.expectedMrr)} sub="失注・受注を除く" />
-        <MetricCard label="契約済みMRR" value={yen(totals.contractedMrr)} sub="受注ステータス" tone="good" />
-        <MetricCard label="想定成功報酬パイプライン" value={yen(totals.expectedSuccessFee)} sub="想定人数 × 単価" />
-        <MetricCard label="ARR見込み" value={yen(arrForecast)} sub="想定MRR × 契約期間" tone="good" />
-        <MetricCard label="ARR見込み案件数" value={`${num(arrForecastCompanies.length)}件`} sub="失注を除く対象案件" />
-        <MetricCard label="提案→受注CVR" value={pct(kpis.winRate)} sub={`${kpis.introduced}社 / ${kpis.proposals}社`} tone="good" />
+        <MetricCard label="オープン案件 想定MRR" value={yen(totals.expectedMrr)} sub="失注・受注を除く" change={weekly.expectedMrr} />
+        <MetricCard label="契約済みMRR" value={yen(totals.contractedMrr)} sub="受注ステータス" tone="good" change={weekly.contractedMrr} />
+        <MetricCard label="想定成功報酬パイプライン" value={yen(totals.expectedSuccessFee)} sub="想定人数 × 単価" change={weekly.expectedSuccessFee} />
+        <MetricCard label="ARR見込み" value={yen(arrForecast)} sub="想定MRR × 契約期間" tone="good" change={weekly.arrForecast} />
+        <MetricCard label="ARR見込み案件数" value={`${num(arrForecastCompanies.length)}件`} sub="失注を除く対象案件" change={weekly.arrForecastCompanies} />
+        <MetricCard label="提案→受注CVR" value={pct(kpis.winRate)} sub={`${kpis.introduced}社 / ${kpis.proposals}社`} tone="good" change={weekly.winRate} />
       </div>
       {mode === "table" ? <PipelineTable companies={data.companies} onSelect={onSelect} onDelete={deleteCompany} /> : <Kanban companies={data.companies} onSelect={onSelect} />}
       <Card>
@@ -449,6 +450,8 @@ function WorkerView({
   const [editingFunnel, setEditingFunnel] = useState<Funnel | null>(null);
   const latestFunnels = getLatestFunnels(data.funnels);
   const inflowSources = getInflowSourceData(latestFunnels);
+  const workerTotals = getWorkerFunnelTotals(latestFunnels);
+  const weekly = getWeeklyWorkerComparison(data);
   const companyCompare = data.companies.map((company) => {
     const funnel = latestFunnels.find((item) => item.companyId === company.id);
     return {
@@ -496,8 +499,15 @@ function WorkerView({
       <FunnelDeleteList companies={data.companies} funnels={data.funnels} onEdit={editFunnel} onDelete={deleteFunnel} />
       <div className="grid gap-3 md:grid-cols-3">
         {inflowSources.map((source) => (
-          <MetricCard key={source.name} label={source.name} value={`${num(source.value)}件`} sub={`応募転換 ${pct(source.conversionRate)}`} tone={source.conversionRate >= 0.12 ? "good" : "neutral"} />
+          <MetricCard key={source.name} label={source.name} value={`${num(source.value)}件`} sub={`応募転換 ${pct(source.conversionRate)}`} tone={source.conversionRate >= 0.12 ? "good" : "neutral"} change={weekly.inflow[source.name]} />
         ))}
+      </div>
+      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <MetricCard label="応募" value={`${num(workerTotals.applications)}人`} sub="Worker Funnel" change={weekly.applications} />
+        <MetricCard label="タイミー勤務" value={`${num(workerTotals.shifts)}件`} sub="職場体験実施" change={weekly.shifts} />
+        <MetricCard label="面談希望" value={`${num(workerTotals.interviewRequests)}件`} sub="勤務後の意思表示" change={weekly.interviewRequests} />
+        <MetricCard label="内定" value={`${num(workerTotals.offers)}人`} sub="選考通過" change={weekly.offers} />
+        <MetricCard label="入社" value={`${num(workerTotals.joins)}人`} sub="入社承諾" change={weekly.joins} />
       </div>
       <Card><div className="mb-4 text-sm font-semibold">流入ファネル</div><SimpleBarChart data={inflowSources} xKey="name" bars={[{ key: "value", name: "流入数", color: "#f8c900" }, { key: "applications", name: "応募数", color: "#168a5f" }]} /></Card>
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
@@ -1485,6 +1495,61 @@ function getWeeklyExecutiveComparison(data: KpiData): Record<string, MetricChang
     joins: makeMetricChange(current.joins, previous.joins, "人"),
     grossProfitPerCompany: makeMetricChange(current.grossProfitPerCompany, previous.grossProfitPerCompany, "円"),
     progress: makeMetricChange(current.progress, previous.progress, "pt", true)
+  };
+}
+
+function getWeeklySalesComparison(data: KpiData): Record<string, MetricChange> {
+  const previousData = getDataAsOf(data, getPreviousMonday());
+  const currentTotals = getPipelineTotals(data);
+  const previousTotals = getPipelineTotals(previousData);
+  const currentKpis = getExecutiveKpis(data);
+  const previousKpis = getExecutiveKpis(previousData);
+  const currentArrCompanies = data.companies.filter((company) => company.status !== "失注" && getArrForecast(company) > 0);
+  const previousArrCompanies = previousData.companies.filter((company) => company.status !== "失注" && getArrForecast(company) > 0);
+
+  return {
+    expectedMrr: makeMetricChange(currentTotals.expectedMrr, previousTotals.expectedMrr, "円"),
+    contractedMrr: makeMetricChange(currentTotals.contractedMrr, previousTotals.contractedMrr, "円"),
+    expectedSuccessFee: makeMetricChange(currentTotals.expectedSuccessFee, previousTotals.expectedSuccessFee, "円"),
+    arrForecast: makeMetricChange(sum(currentArrCompanies, getArrForecast), sum(previousArrCompanies, getArrForecast), "円"),
+    arrForecastCompanies: makeMetricChange(currentArrCompanies.length, previousArrCompanies.length, "件"),
+    winRate: makeMetricChange(currentKpis.winRate, previousKpis.winRate, "pt", true)
+  };
+}
+
+function getWeeklyWorkerComparison(data: KpiData): {
+  inflow: Record<string, MetricChange>;
+  applications: MetricChange;
+  shifts: MetricChange;
+  interviewRequests: MetricChange;
+  offers: MetricChange;
+  joins: MetricChange;
+} {
+  const previousData = getDataAsOf(data, getPreviousMonday());
+  const currentFunnels = getLatestFunnels(data.funnels);
+  const previousFunnels = getLatestFunnels(previousData.funnels);
+  const currentTotals = getWorkerFunnelTotals(currentFunnels);
+  const previousTotals = getWorkerFunnelTotals(previousFunnels);
+  const previousInflowByName = Object.fromEntries(getInflowSourceData(previousFunnels).map((source) => [source.name, source.value]));
+  const currentInflow = getInflowSourceData(currentFunnels);
+
+  return {
+    inflow: Object.fromEntries(currentInflow.map((source) => [source.name, makeMetricChange(source.value, previousInflowByName[source.name] ?? 0, "件")])),
+    applications: makeMetricChange(currentTotals.applications, previousTotals.applications, "人"),
+    shifts: makeMetricChange(currentTotals.shifts, previousTotals.shifts, "件"),
+    interviewRequests: makeMetricChange(currentTotals.interviewRequests, previousTotals.interviewRequests, "件"),
+    offers: makeMetricChange(currentTotals.offers, previousTotals.offers, "人"),
+    joins: makeMetricChange(currentTotals.joins, previousTotals.joins, "人")
+  };
+}
+
+function getWorkerFunnelTotals(funnels: Funnel[]) {
+  return {
+    applications: sum(funnels, (funnel) => funnel.applications),
+    shifts: sum(funnels, (funnel) => funnel.shifts),
+    interviewRequests: sum(funnels, (funnel) => funnel.interviewRequests),
+    offers: sum(funnels, (funnel) => funnel.offers),
+    joins: sum(funnels, (funnel) => funnel.joins)
   };
 }
 

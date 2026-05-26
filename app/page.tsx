@@ -579,10 +579,6 @@ function ClientView({
                             <span className="text-muted">FCST</span>
                             <Pill className={statusStyle[company.status]}>{company.status}</Pill>
                           </div>
-                          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-                            <div><span className="text-muted">MRR</span><div className="font-semibold text-ink">{yen(company.expectedMrr)}</div></div>
-                            <div><span className="text-muted">ARR</span><div className="font-semibold text-ink">{yen(getArrForecast(company))}</div></div>
-                          </div>
                           <div className="mt-2 rounded-md bg-panel px-2 py-1.5 text-xs text-muted">
                             NA予定日: <span className="font-semibold text-ink">{company.naScheduledDate ?? "-"}</span>
                           </div>

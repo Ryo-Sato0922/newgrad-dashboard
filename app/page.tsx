@@ -55,6 +55,20 @@ const initialData: AppData = {
 
 const displayKpiSnapshots = seedKpiSnapshots.slice(0, 1);
 
+function formatUpdatedAt(date: Date) {
+  return new Intl.DateTimeFormat("ja-JP", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(date);
+}
+
+function getPersistenceMessage(updatedAt?: Date | null) {
+  const base = isSupabaseConfigured ? "DBに保存されます" : "ブラウザ内に自動保存されます";
+  return updatedAt ? `${base} / 最終更新 ${formatUpdatedAt(updatedAt)}` : base;
+}
+
 const nav = [
   { id: "executive", label: "Executive", icon: LayoutDashboard },
   { id: "sales", label: "FCST", icon: BriefcaseBusiness },
@@ -82,7 +96,7 @@ export default function Home() {
   const [pipelineMode, setPipelineMode] = useState<"table" | "kanban">("table");
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [data, setData] = useState<AppData>(initialData);
-  const [savedMessage, setSavedMessage] = useState(isSupabaseConfigured ? "Supabaseに保存されます" : "ブラウザ内に自動保存されます");
+  const [savedMessage, setSavedMessage] = useState(getPersistenceMessage());
   const [hasLocalBackup, setHasLocalBackup] = useState(false);
 
   useEffect(() => {
@@ -92,10 +106,11 @@ export default function Home() {
       fetchAppData()
         .then((remoteData) => {
           setData(normalizeAppData(remoteData));
-          setSavedMessage("Supabaseから読み込みました");
-          window.setTimeout(() => setSavedMessage("Supabaseに保存されます"), 2200);
+          const updatedAt = new Date();
+          setSavedMessage(`DBから読み込みました / 最終更新 ${formatUpdatedAt(updatedAt)}`);
+          window.setTimeout(() => setSavedMessage(getPersistenceMessage(updatedAt)), 2200);
         })
-        .catch(() => setSavedMessage("Supabaseの読み込みに失敗しました"));
+        .catch(() => setSavedMessage("DBの読み込みに失敗しました"));
       return;
     }
 
@@ -122,13 +137,14 @@ export default function Home() {
   const executive = getExecutiveKpis(kpiData);
 
   function afterSave(message: string) {
-    setSavedMessage(message);
-    window.setTimeout(() => setSavedMessage(isSupabaseConfigured ? "Supabaseに保存されます" : "ブラウザ内に自動保存されます"), 2200);
+    const updatedAt = new Date();
+    setSavedMessage(`${message} / 最終更新 ${formatUpdatedAt(updatedAt)}`);
+    window.setTimeout(() => setSavedMessage(getPersistenceMessage(updatedAt)), 2200);
   }
 
   async function migrateLocalStorageToSupabase() {
     if (!isSupabaseConfigured) {
-      setSavedMessage("Supabase環境変数が未設定です");
+      setSavedMessage("DB接続の環境変数が未設定です");
       return;
     }
 
@@ -144,10 +160,11 @@ export default function Home() {
       setData(migratedData);
       window.localStorage.removeItem(storageKey);
       setHasLocalBackup(false);
-      setSavedMessage("ブラウザ保存データをSupabaseへ移行しました");
-      window.setTimeout(() => setSavedMessage("Supabaseに保存されます"), 2600);
+      const updatedAt = new Date();
+      setSavedMessage(`ブラウザ保存データをDBへ移行しました / 最終更新 ${formatUpdatedAt(updatedAt)}`);
+      window.setTimeout(() => setSavedMessage(getPersistenceMessage(updatedAt)), 2600);
     } catch {
-      setSavedMessage("Supabaseへの移行に失敗しました");
+      setSavedMessage("DBへの移行に失敗しました");
     }
   }
 
@@ -803,8 +820,9 @@ function DataEntryView({ data, setData, setSavedMessage }: { data: AppData; setD
   const [editingFunnel, setEditingFunnel] = useState<Funnel | null>(null);
 
   function afterSave(message: string) {
-    setSavedMessage(message);
-    window.setTimeout(() => setSavedMessage("ブラウザ内に自動保存されます"), 2200);
+    const updatedAt = new Date();
+    setSavedMessage(`${message} / 最終更新 ${formatUpdatedAt(updatedAt)}`);
+    window.setTimeout(() => setSavedMessage(getPersistenceMessage(updatedAt)), 2200);
   }
 
   function deleteCompany(id: string) {

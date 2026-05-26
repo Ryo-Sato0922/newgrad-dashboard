@@ -528,7 +528,11 @@ function ClientView({
   async function updateClientPhase(company: Company, clientPhase: ClientPhase) {
     const updated = { ...company, clientPhase };
     if (isSupabaseConfigured) {
-      await upsertCompany(updated);
+      const result = await upsertCompany(updated);
+      if (result?.clientPhasePersisted === false) {
+        afterSave("DBに商談フェーズカラムを追加してください");
+        return;
+      }
     }
     setData((current) => ({
       ...current,

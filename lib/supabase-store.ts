@@ -366,10 +366,11 @@ export async function upsertCompany(company: Company) {
     if (isMissingClientPhaseColumn(error)) {
       const retry = await client.from("companies").upsert(toCompanyRow(company, false));
       if (retry.error) throw retry.error;
-      return;
+      return { clientPhasePersisted: false };
     }
     throw error;
   }
+  return { clientPhasePersisted: true };
 }
 
 function isMissingClientPhaseColumn(error: { message?: string; code?: string }) {

@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { AppData, Company, Experiment, Funnel, Survey, UnitEconomics } from "./types";
+import { AppData, ClientPhase, Company, Experiment, Funnel, Survey, UnitEconomics } from "./types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -16,6 +16,7 @@ type DbCompany = {
   owner: string;
   email: string | null;
   status: Company["status"];
+  client_phase?: ClientPhase | null;
   expected_mrr: number;
   contract_months: number | null;
   success_fee: number;
@@ -114,6 +115,7 @@ function fromCompany(row: DbCompany): Company {
     owner: row.owner,
     email: row.email ?? "",
     status: row.status,
+    clientPhase: row.client_phase ?? "P0",
     expectedMrr: row.expected_mrr,
     contractMonths: row.contract_months ?? 0,
     successFee: row.success_fee,
@@ -131,8 +133,8 @@ function fromCompany(row: DbCompany): Company {
   };
 }
 
-function toCompanyRow(company: Company) {
-  return {
+function toCompanyRow(company: Company, includeClientPhase = true) {
+  const row = {
     id: company.id,
     name: company.name,
     industry: company.industry,
@@ -155,6 +157,7 @@ function toCompanyRow(company: Company) {
     cs_hours: company.csHours,
     acquisition_cost: company.acquisitionCost
   };
+  return includeClientPhase ? { ...row, client_phase: company.clientPhase ?? "P0" } : row;
 }
 
 function fromFunnel(row: DbFunnel): Funnel {
@@ -323,8 +326,15 @@ export async function upsertAppData(data: AppData) {
   const prepared = prepareAppDataForSupabase(data);
 
   if (prepared.companies.length > 0) {
-    const { error } = await client.from("companies").upsert(prepared.companies.map(toCompanyRow));
-    if (error) throw error;
+    const { error } = await client.from("companies").upsert(prepared.companies.map((company) => toCompanyRow(company)));
+    if (error) {
+      if (isMissingClientPhaseColumn(error)) {
+        const retry = await client.from("companies").upsert(prepared.companies.map((company) => toCompanyRow(company, false)));
+        if (retry.error) throw retry.error;
+      } else {
+        throw error;
+      }
+    }
   }
 
   if (prepared.unitEconomics.length > 0) {
@@ -350,8 +360,20 @@ function isUuid(value: string) {
 }
 
 export async function upsertCompany(company: Company) {
-  const { error } = await requireSupabase().from("companies").upsert(toCompanyRow(company));
-  if (error) throw error;
+  const client = requireSupabase();
+  const { error } = await client.from("companies").upsert(toCompanyRow(company));
+  if (error) {
+    if (isMissingClientPhaseColumn(error)) {
+      const retry = await client.from("companies").upsert(toCompanyRow(company, false));
+      if (retry.error) throw retry.error;
+      return;
+    }
+    throw error;
+  }
+}
+
+function isMissingClientPhaseColumn(error: { message?: string; code?: string }) {
+  return error.code === "PGRST204" || (error.message ?? "").includes("client_phase");
 }
 
 export async function deleteCompanyRecord(id: string) {

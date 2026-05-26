@@ -1,4 +1,5 @@
 export type CompanyStatus = "リード" | "初回商談" | "提案中" | "PoC" | "契約交渉" | "受注" | "失注";
+export type ClientPhase = "P0" | "P1" | "P2" | "P3" | "P4" | "P5" | "P6" | "P7";
 export type ExperimentStatus = "未実施" | "検証中" | "成功" | "失敗";
 
 export type Company = {
@@ -9,6 +10,7 @@ export type Company = {
   owner: string;
   email: string;
   status: CompanyStatus;
+  clientPhase?: ClientPhase;
   expectedMrr: number;
   contractMonths?: number;
   successFee: number;

@@ -1,6 +1,7 @@
 create extension if not exists "uuid-ossp";
 
 create type company_status as enum ('リード', '初回商談', '提案中', 'PoC', '契約交渉', '受注', '失注');
+create type client_phase as enum ('P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7');
 create type experiment_status as enum ('未実施', '検証中', '成功', '失敗');
 
 create table companies (
@@ -11,6 +12,7 @@ create table companies (
   owner text not null,
   email text not null,
   status company_status not null default 'リード',
+  client_phase client_phase not null default 'P0',
   expected_mrr integer not null default 0,
   contract_months integer not null default 0,
   success_fee integer not null default 0,
@@ -103,6 +105,17 @@ create table experiments (
 );
 
 create index companies_status_idx on companies(status);
+create index companies_client_phase_idx on companies(client_phase);
 create index companies_industry_idx on companies(industry);
 create index worker_funnels_company_month_idx on worker_funnels(company_id, month);
 create index student_surveys_company_idx on student_surveys(company_id);
+
+-- Existing projects can run this migration safely after the first schema was already created.
+do $$ begin
+  create type client_phase as enum ('P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7');
+exception
+  when duplicate_object then null;
+end $$;
+
+alter table companies add column if not exists client_phase client_phase not null default 'P0';
+create index if not exists companies_client_phase_idx on companies(client_phase);

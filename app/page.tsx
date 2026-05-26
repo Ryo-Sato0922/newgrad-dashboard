@@ -6,6 +6,7 @@ import {
   Activity,
   BarChart3,
   BriefcaseBusiness,
+  Building2,
   LayoutDashboard,
   LineChart,
   PanelsTopLeft,
@@ -38,7 +39,7 @@ import {
   yen
 } from "@/lib/kpis";
 import { deleteCompanyRecord, deleteFunnelRecord, fetchAppData, isSupabaseConfigured, upsertAppData, upsertCompany, upsertFunnel, upsertSurvey, upsertUnitEconomics } from "@/lib/supabase-store";
-import { AppData, Company, CompanyStatus, Experiment, ExperimentStatus, Funnel, Survey, UnitEconomics } from "@/lib/types";
+import { AppData, ClientPhase, Company, CompanyStatus, Experiment, ExperimentStatus, Funnel, Survey, UnitEconomics } from "@/lib/types";
 
 type DrilldownRow = { label: string; value: string; meta?: string; companyId?: string };
 type ExecutiveCard = { label: string; value: string; sub: string; tone?: "neutral" | "good" | "warn" | "bad"; formula: string; rows: DrilldownRow[]; change?: MetricChange };
@@ -72,14 +73,27 @@ function getPersistenceMessage(updatedAt?: Date | null) {
 const nav = [
   { id: "executive", label: "Executive", icon: LayoutDashboard },
   { id: "sales", label: "FCST", icon: BriefcaseBusiness },
+  { id: "client", label: "Client", icon: Building2 },
   { id: "worker", label: "Worker", icon: UsersRound },
   { id: "hiring", label: "Hiring", icon: BarChart3 },
   { id: "unit", label: "Unit Economics", icon: LineChart }
 ] as const;
 
 const statuses: CompanyStatus[] = ["リード", "初回商談", "提案中", "PoC", "契約交渉", "受注", "失注"];
+const clientPhases: ClientPhase[] = ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7"];
 const experimentStatuses: ExperimentStatus[] = ["未実施", "検証中", "成功", "失敗"];
 const areas = ["北海道", "東北", "関東", "中部", "近畿", "中国", "四国", "九州沖縄"];
+
+const clientPhaseLabels: Record<ClientPhase, string> = {
+  P0: "アポ予定",
+  P1: "案件の見極め",
+  P2: "課題の特定",
+  P3: "推進者との導入合意",
+  P4: "決裁者との導入合意",
+  P5: "価格・導入時期の合意",
+  P6: "稟議決裁",
+  P7: "申込書回収"
+};
 
 const statusStyle: Record<CompanyStatus, string> = {
   リード: "border-stone-200 bg-stone-50 text-stone-700",
@@ -89,6 +103,17 @@ const statusStyle: Record<CompanyStatus, string> = {
   契約交渉: "border-amber-200 bg-amber-50 text-amber-700",
   受注: "border-green-200 bg-green-50 text-green-700",
   失注: "border-red-200 bg-red-50 text-red-700"
+};
+
+const phaseStyle: Record<ClientPhase, string> = {
+  P0: "border-stone-200 bg-stone-50 text-stone-700",
+  P1: "border-yellow-200 bg-yellow-50 text-yellow-800",
+  P2: "border-amber-200 bg-amber-50 text-amber-800",
+  P3: "border-orange-200 bg-orange-50 text-orange-800",
+  P4: "border-blue-200 bg-blue-50 text-blue-800",
+  P5: "border-sky-200 bg-sky-50 text-sky-800",
+  P6: "border-emerald-200 bg-emerald-50 text-emerald-800",
+  P7: "border-green-200 bg-green-50 text-green-700"
 };
 
 export default function Home() {
@@ -238,6 +263,7 @@ export default function Home() {
         <div className="space-y-6 p-4 sm:p-6">
           {active === "executive" && <ExecutiveView data={kpiData} onSelectCompany={setSelectedCompany} />}
           {active === "sales" && <SalesView data={kpiData} setData={setData} afterSave={afterSave} mode={pipelineMode} setMode={setPipelineMode} onSelect={setSelectedCompany} />}
+          {active === "client" && <ClientView data={kpiData} setData={setData} afterSave={afterSave} onSelect={setSelectedCompany} />}
           {active === "worker" && <WorkerView data={{ ...kpiData, funnels: data.funnels }} setData={setData} afterSave={afterSave} onSelectCompany={setSelectedCompany} />}
           {active === "hiring" && <HiringView data={kpiData} />}
           {active === "unit" && <UnitView data={kpiData} setData={setData} afterSave={afterSave} />}
@@ -417,7 +443,7 @@ function PipelineTable({ companies, onSelect, onDelete }: { companies: Company[]
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1160px] text-left text-sm">
           <thead className="border-b border-line bg-yellow-50 text-xs text-muted">
-            <tr>{["企業名", "業界", "エリア", "担当", "ステータス", "契約期間", "ARR見込み", "想定MRR", "成功報酬", "採用人数", "提案日", "契約予定日", "操作"].map((head) => <th key={head} className="px-4 py-3 font-semibold">{head}</th>)}</tr>
+            <tr>{["企業名", "業界", "エリア", "担当", "FCSTステータス", "契約期間", "ARR見込み", "想定MRR", "成功報酬", "採用人数", "提案日", "契約予定日", "操作"].map((head) => <th key={head} className="px-4 py-3 font-semibold">{head}</th>)}</tr>
           </thead>
           <tbody>
             {companies.map((company) => (
@@ -478,6 +504,128 @@ function Kanban({ companies, onSelect }: { companies: Company[]; onSelect: (comp
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function ClientView({
+  data,
+  setData,
+  afterSave,
+  onSelect
+}: {
+  data: KpiData;
+  setData: React.Dispatch<React.SetStateAction<AppData>>;
+  afterSave: (message: string) => void;
+  onSelect: (company: Company) => void;
+}) {
+  const activeClients = data.companies.filter((company) => company.status !== "失注");
+  const phaseCounts = Object.fromEntries(clientPhases.map((phase) => [phase, activeClients.filter((company) => getClientPhase(company) === phase).length])) as Record<ClientPhase, number>;
+  const p7Clients = activeClients.filter((company) => getClientPhase(company) === "P7");
+  const decisionClients = activeClients.filter((company) => ["P4", "P5", "P6"].includes(getClientPhase(company)));
+  const averagePhase = activeClients.length > 0 ? sum(activeClients, (company) => clientPhases.indexOf(getClientPhase(company))) / activeClients.length : 0;
+
+  async function updateClientPhase(company: Company, clientPhase: ClientPhase) {
+    const updated = { ...company, clientPhase };
+    if (isSupabaseConfigured) {
+      await upsertCompany(updated);
+    }
+    setData((current) => ({
+      ...current,
+      companies: current.companies.map((item) => (item.id === company.id ? updated : item))
+    }));
+    afterSave("商談フェーズを更新しました");
+  }
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title="Client"
+        description="登録済みクライアントの商談フェーズをP0〜P7で管理します。FCSTステータスとは分けて、導入合意と申込書回収までの進捗を追います。"
+      />
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="管理クライアント" value={`${num(activeClients.length)}社`} sub="失注を除く" />
+        <MetricCard label="申込書回収" value={`${num(p7Clients.length)}社`} sub="P7到達" tone="good" />
+        <MetricCard label="決裁合意〜稟議" value={`${num(decisionClients.length)}社`} sub="P4-P6" />
+        <MetricCard label="平均フェーズ" value={`P${Math.round(averagePhase)}`} sub={clientPhaseLabels[`P${Math.round(averagePhase)}` as ClientPhase] ?? "未設定"} />
+      </div>
+      <Card className="overflow-hidden p-0">
+        <div className="overflow-x-auto">
+          <div className="grid min-w-[1500px] grid-cols-8 gap-3 p-4">
+            {clientPhases.map((phase) => {
+              const items = activeClients.filter((company) => getClientPhase(company) === phase);
+              return (
+                <div key={phase} className="rounded-lg border border-line bg-yellow-50/50 p-3">
+                  <div className="flex min-h-12 items-start justify-between gap-2">
+                    <div>
+                      <Pill className={phaseStyle[phase]}>{phase}</Pill>
+                      <div className="mt-2 text-xs font-semibold leading-5 text-ink">{clientPhaseLabels[phase]}</div>
+                    </div>
+                    <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-muted">{phaseCounts[phase]}</span>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {items.map((company) => (
+                      <div key={company.id} className="rounded-md border border-line bg-white p-3 shadow-soft">
+                        <button type="button" onClick={() => onSelect(company)} className="block w-full text-left">
+                          <div className="font-semibold text-ink">{company.name}</div>
+                          <div className="mt-1 text-xs text-muted">{company.industry} / {company.area}</div>
+                          <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+                            <span className="text-muted">FCST</span>
+                            <Pill className={statusStyle[company.status]}>{company.status}</Pill>
+                          </div>
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                            <div><span className="text-muted">MRR</span><div className="font-semibold text-ink">{yen(company.expectedMrr)}</div></div>
+                            <div><span className="text-muted">ARR</span><div className="font-semibold text-ink">{yen(getArrForecast(company))}</div></div>
+                          </div>
+                        </button>
+                        <label className="mt-3 block">
+                          <span className="text-[11px] font-medium text-muted">商談フェーズ</span>
+                          <select
+                            value={getClientPhase(company)}
+                            onChange={(event) => updateClientPhase(company, event.target.value as ClientPhase)}
+                            className="mt-1 h-9 w-full rounded-md border border-line bg-white px-2 text-xs outline-none transition focus:border-accent-strong focus:ring-2 focus:ring-yellow-100"
+                          >
+                            {clientPhases.map((option) => <option key={option} value={option}>{option} {clientPhaseLabels[option]}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                    ))}
+                    {items.length === 0 ? <div className="rounded-md border border-dashed border-line bg-white/70 p-3 text-center text-xs text-muted">該当なし</div> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </Card>
+      <Card className="overflow-hidden p-0">
+        <div className="border-b border-line bg-panel px-4 py-3 text-sm font-semibold">クライアント一覧</div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px] text-left text-sm">
+            <thead className="border-b border-line bg-yellow-50 text-xs text-muted">
+              <tr>{["企業名", "商談フェーズ", "FCSTステータス", "業界", "エリア", "担当", "MRR", "ARR見込み", "申込書回収日"].map((head) => <th key={head} className="px-4 py-3 font-semibold">{head}</th>)}</tr>
+            </thead>
+            <tbody>
+              {data.companies.map((company) => {
+                const phase = getClientPhase(company);
+                return (
+                  <tr key={company.id} onClick={() => onSelect(company)} className="cursor-pointer border-b border-line last:border-0 hover:bg-yellow-50/70">
+                    <td className="px-4 py-3 font-medium text-ink">{company.name}</td>
+                    <td className="px-4 py-3"><Pill className={phaseStyle[phase]}>{phase} {clientPhaseLabels[phase]}</Pill></td>
+                    <td className="px-4 py-3"><Pill className={statusStyle[company.status]}>{company.status}</Pill></td>
+                    <td className="px-4 py-3 text-muted">{company.industry}</td>
+                    <td className="px-4 py-3 text-muted">{company.area}</td>
+                    <td className="px-4 py-3 text-muted">{company.owner}</td>
+                    <td className="px-4 py-3">{yen(company.expectedMrr)}</td>
+                    <td className="px-4 py-3">{yen(getArrForecast(company))}</td>
+                    <td className="px-4 py-3 text-muted">{company.applicationReceivedDate ?? "-"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
     </div>
   );
 }
@@ -867,7 +1015,7 @@ function DataEntryView({ data, setData, setSavedMessage }: { data: AppData; setD
 
 function CompanyForm({ setData, afterSave, onDone }: { setData: React.Dispatch<React.SetStateAction<AppData>>; afterSave: (message: string) => void; onDone?: () => void }) {
   const [form, setForm] = useState({
-    name: "", industry: "", area: "関東", owner: "", status: "リード" as CompanyStatus, expectedMrr: "200000", contractMonths: "12", successFee: "400000", expectedHires: "3",
+    name: "", industry: "", area: "関東", owner: "", status: "リード" as CompanyStatus, clientPhase: "P0" as ClientPhase, expectedMrr: "200000", contractMonths: "12", successFee: "400000", expectedHires: "3",
     initialMeetingDate: "", applicationReceivedDate: "", proposalDate: "", contractTargetDate: "", contractStartDate: "", lostReason: "", memo: "", salesHours: "0", csHours: "0"
   });
 
@@ -881,6 +1029,7 @@ function CompanyForm({ setData, afterSave, onDone }: { setData: React.Dispatch<R
       owner: form.owner,
       email: "",
       status: form.status,
+      clientPhase: form.clientPhase,
       expectedMrr: toNumber(form.expectedMrr),
       contractMonths: toNumber(form.contractMonths),
       successFee: toNumber(form.successFee),
@@ -914,7 +1063,8 @@ function CompanyForm({ setData, afterSave, onDone }: { setData: React.Dispatch<R
           <Input label="業界" value={form.industry} onChange={(industry) => setForm({ ...form, industry })} required />
           <Select label="所在地エリア" value={form.area} options={areas} onChange={(area) => setForm({ ...form, area })} />
           <Input label="担当者名" value={form.owner} onChange={(owner) => setForm({ ...form, owner })} required />
-          <Select label="ステータス" value={form.status} options={statuses} onChange={(status) => setForm({ ...form, status: status as CompanyStatus })} />
+          <Select label="FCSTステータス" value={form.status} options={statuses} onChange={(status) => setForm({ ...form, status: status as CompanyStatus })} />
+          <Select label="商談フェーズ" value={form.clientPhase} options={clientPhases.map((phase) => ({ value: phase, label: `${phase} ${clientPhaseLabels[phase]}` }))} onChange={(clientPhase) => setForm({ ...form, clientPhase: clientPhase as ClientPhase })} />
         </FormSection>
         <FormSection title="FCST条件">
           <Input label="想定MRR" type="number" value={form.expectedMrr} onChange={(expectedMrr) => setForm({ ...form, expectedMrr })} />
@@ -1345,6 +1495,7 @@ function CompanyModal({
     owner: company.owner,
     email: company.email,
     status: company.status,
+    clientPhase: getClientPhase(company),
     expectedMrr: String(company.expectedMrr),
     contractMonths: String(company.contractMonths ?? 0),
     successFee: String(company.successFee),
@@ -1371,6 +1522,7 @@ function CompanyModal({
       owner: form.owner,
       email: form.email,
       status: form.status,
+      clientPhase: form.clientPhase,
       expectedMrr: toNumber(form.expectedMrr),
       contractMonths: toNumber(form.contractMonths),
       successFee: toNumber(form.successFee),
@@ -1433,7 +1585,8 @@ function CompanyModal({
                   <Input label="業界" value={form.industry} onChange={(industry) => setForm({ ...form, industry })} required />
                   <Select label="所在地エリア" value={form.area} options={areas} onChange={(area) => setForm({ ...form, area })} />
                   <Input label="担当者名" value={form.owner} onChange={(owner) => setForm({ ...form, owner })} required />
-                  <Select label="ステータス" value={form.status} options={statuses} onChange={(status) => setForm({ ...form, status: status as CompanyStatus })} />
+                  <Select label="FCSTステータス" value={form.status} options={statuses} onChange={(status) => setForm({ ...form, status: status as CompanyStatus })} />
+                  <Select label="商談フェーズ" value={form.clientPhase} options={clientPhases.map((phase) => ({ value: phase, label: `${phase} ${clientPhaseLabels[phase]}` }))} onChange={(clientPhase) => setForm({ ...form, clientPhase: clientPhase as ClientPhase })} />
                 </FormSection>
                 <FormSection title="FCST条件">
                   <Input label="想定MRR" type="number" value={form.expectedMrr} onChange={(expectedMrr) => setForm({ ...form, expectedMrr })} />
@@ -1459,7 +1612,7 @@ function CompanyModal({
           ) : (
             <>
               <div className="grid gap-3 sm:grid-cols-3"><MetricCard label="ARR見込み" value={yen(getArrForecast(company))} /><MetricCard label="契約期間" value={`${company.contractMonths ?? 0}ヶ月`} /><MetricCard label="想定MRR" value={yen(company.expectedMrr)} /><MetricCard label="成功報酬単価" value={yen(company.successFee)} /></div>
-              <div className="grid gap-3 sm:grid-cols-2"><Info label="所在地エリア" value={company.area} /><Info label="ステータス" value={company.status} /><Info label="初回商談日" value={company.initialMeetingDate ?? "-"} /><Info label="申込書回収日" value={company.applicationReceivedDate ?? "-"} /><Info label="受注リードタイム" value={getLeadTimeDays(company) === null ? "-" : `${num(getLeadTimeDays(company) ?? 0)}日`} /><Info label="提案日" value={company.proposalDate ?? "-"} /><Info label="契約予定日" value={company.contractTargetDate ?? "-"} /><Info label="契約開始日" value={company.contractStartDate ?? "-"} /><Info label="失注理由" value={company.lostReason ?? "-"} /><Info label="メモ" value={company.memo} /></div>
+              <div className="grid gap-3 sm:grid-cols-2"><Info label="所在地エリア" value={company.area} /><Info label="FCSTステータス" value={company.status} /><Info label="商談フェーズ" value={`${getClientPhase(company)} ${clientPhaseLabels[getClientPhase(company)]}`} /><Info label="初回商談日" value={company.initialMeetingDate ?? "-"} /><Info label="申込書回収日" value={company.applicationReceivedDate ?? "-"} /><Info label="受注リードタイム" value={getLeadTimeDays(company) === null ? "-" : `${num(getLeadTimeDays(company) ?? 0)}日`} /><Info label="提案日" value={company.proposalDate ?? "-"} /><Info label="契約予定日" value={company.contractTargetDate ?? "-"} /><Info label="契約開始日" value={company.contractStartDate ?? "-"} /><Info label="失注理由" value={company.lostReason ?? "-"} /><Info label="メモ" value={company.memo} /></div>
             </>
           )}
           {funnel ? <Card><div className="mb-4 text-sm font-semibold">企業別ワーカーファネル</div><FunnelChart data={getFunnelStages([funnel])} /></Card> : null}
@@ -1565,11 +1718,22 @@ function getArrForecast(company: Company) {
   return company.expectedMrr * (company.contractMonths ?? 0);
 }
 
+function getClientPhase(company: Company): ClientPhase {
+  if (company.clientPhase) return company.clientPhase;
+  if (company.status === "受注") return "P7";
+  if (company.status === "契約交渉") return "P6";
+  if (company.status === "PoC") return "P3";
+  if (company.status === "提案中") return "P2";
+  if (company.status === "初回商談") return "P1";
+  return "P0";
+}
+
 function normalizeAppData(data: AppData): AppData {
   return {
     ...data,
     companies: data.companies.map((company) => ({
       ...company,
+      clientPhase: getClientPhase(company),
       initialMeetingDate: company.initialMeetingDate ?? company.proposalDate ?? null,
       applicationReceivedDate: company.applicationReceivedDate ?? company.contractTargetDate ?? null
     }))

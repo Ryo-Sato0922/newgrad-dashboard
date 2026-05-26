@@ -9,6 +9,7 @@ export const companies: Company[] = [
     owner: "高橋 美咲",
     email: "",
     status: "受注",
+    clientPhase: "P7",
     expectedMrr: 320000,
     contractMonths: 12,
     successFee: 450000,

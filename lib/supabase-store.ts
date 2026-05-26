@@ -17,6 +17,8 @@ type DbCompany = {
   email: string | null;
   status: Company["status"];
   client_phase?: ClientPhase | null;
+  na_scheduled_date?: string | null;
+  deal_memo?: string | null;
   expected_mrr: number;
   contract_months: number | null;
   success_fee: number;
@@ -116,6 +118,8 @@ function fromCompany(row: DbCompany): Company {
     email: row.email ?? "",
     status: row.status,
     clientPhase: row.client_phase ?? "P0",
+    naScheduledDate: dateToInput(row.na_scheduled_date ?? null),
+    dealMemo: row.deal_memo ?? "",
     expectedMrr: row.expected_mrr,
     contractMonths: row.contract_months ?? 0,
     successFee: row.success_fee,
@@ -133,7 +137,7 @@ function fromCompany(row: DbCompany): Company {
   };
 }
 
-function toCompanyRow(company: Company, includeClientPhase = true) {
+function toCompanyRow(company: Company, includeClientPipelineFields = true) {
   const row = {
     id: company.id,
     name: company.name,
@@ -157,7 +161,7 @@ function toCompanyRow(company: Company, includeClientPhase = true) {
     cs_hours: company.csHours,
     acquisition_cost: company.acquisitionCost
   };
-  return includeClientPhase ? { ...row, client_phase: company.clientPhase ?? "P0" } : row;
+  return includeClientPipelineFields ? { ...row, client_phase: company.clientPhase ?? "P0", na_scheduled_date: company.naScheduledDate ?? null, deal_memo: company.dealMemo ?? "" } : row;
 }
 
 function fromFunnel(row: DbFunnel): Funnel {
@@ -328,7 +332,7 @@ export async function upsertAppData(data: AppData) {
   if (prepared.companies.length > 0) {
     const { error } = await client.from("companies").upsert(prepared.companies.map((company) => toCompanyRow(company)));
     if (error) {
-      if (isMissingClientPhaseColumn(error)) {
+      if (isMissingClientPipelineColumn(error)) {
         const retry = await client.from("companies").upsert(prepared.companies.map((company) => toCompanyRow(company, false)));
         if (retry.error) throw retry.error;
       } else {
@@ -363,18 +367,19 @@ export async function upsertCompany(company: Company) {
   const client = requireSupabase();
   const { error } = await client.from("companies").upsert(toCompanyRow(company));
   if (error) {
-    if (isMissingClientPhaseColumn(error)) {
+    if (isMissingClientPipelineColumn(error)) {
       const retry = await client.from("companies").upsert(toCompanyRow(company, false));
       if (retry.error) throw retry.error;
-      return { clientPhasePersisted: false };
+      return { clientPipelinePersisted: false };
     }
     throw error;
   }
-  return { clientPhasePersisted: true };
+  return { clientPipelinePersisted: true };
 }
 
-function isMissingClientPhaseColumn(error: { message?: string; code?: string }) {
-  return error.code === "PGRST204" || (error.message ?? "").includes("client_phase");
+function isMissingClientPipelineColumn(error: { message?: string; code?: string }) {
+  const message = error.message ?? "";
+  return error.code === "PGRST204" || ["client_phase", "na_scheduled_date", "deal_memo"].some((column) => message.includes(column));
 }
 
 export async function deleteCompanyRecord(id: string) {

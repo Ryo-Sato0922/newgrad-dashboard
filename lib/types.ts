@@ -11,6 +11,8 @@ export type Company = {
   email: string;
   status: CompanyStatus;
   clientPhase?: ClientPhase;
+  naScheduledDate?: string | null;
+  dealMemo?: string;
   expectedMrr: number;
   contractMonths?: number;
   successFee: number;

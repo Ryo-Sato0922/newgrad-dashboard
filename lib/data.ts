@@ -10,6 +10,8 @@ export const companies: Company[] = [
     email: "",
     status: "受注",
     clientPhase: "P7",
+    naScheduledDate: "2026-03-24",
+    dealMemo: "店長面談化の再現性と初期導入店舗の選定を次回確認。",
     expectedMrr: 320000,
     contractMonths: 12,
     successFee: 450000,

@@ -5,6 +5,8 @@ exception
 end $$;
 
 alter table companies add column if not exists client_phase client_phase not null default 'P0';
+alter table companies add column if not exists na_scheduled_date date;
+alter table companies add column if not exists deal_memo text not null default '';
 
 update companies
 set client_phase = case

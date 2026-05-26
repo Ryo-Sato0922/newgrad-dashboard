@@ -25,6 +25,7 @@ import {
   getCompanyOutcomeData,
   getExecutiveKpis,
   getFunnelStages,
+  hasContractStarted,
   getIndustryFunnelData,
   getLatestFunnels,
   getLostReasonData,
@@ -292,14 +293,15 @@ function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompa
   const weekly = getWeeklyExecutiveComparison(data);
   const trendData = getExecutiveTrendData(data);
   const wonCompanies = data.companies.filter((company) => company.status === "受注");
-  const averageArpu = Math.round(sum(wonCompanies, (company) => company.expectedMrr) / Math.max(1, wonCompanies.length));
+  const contractedCompanies = data.companies.filter(hasContractStarted);
+  const averageArpu = Math.round(sum(contractedCompanies, (company) => company.expectedMrr) / Math.max(1, contractedCompanies.length));
   const leadTimeCompanies = wonCompanies.filter((company) => getLeadTimeDays(company) !== null);
   const averageLeadTime = Math.round(sum(leadTimeCompanies, (company) => getLeadTimeDays(company) ?? 0) / Math.max(1, leadTimeCompanies.length));
   const proposalCompanies = data.companies.filter((company) => Boolean(company.proposalDate));
   const dealStageCompanies = data.companies.filter((company) => company.status !== "リード");
   const latestFunnels = getLatestFunnels(data.funnels);
   const latestUnit = data.unitEconomics[data.unitEconomics.length - 1];
-  const contractedArrForecast = sum(wonCompanies, getArrForecast);
+  const contractedArrForecast = sum(contractedCompanies, getArrForecast);
   const companyRows = (companies: Company[], value: (company: Company) => string): DrilldownRow[] => companies.map((company) => ({
     label: company.name,
     value: value(company),
@@ -319,9 +321,9 @@ function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompa
     { label: "受注率", value: pct(kpis.winRate), sub: "受注 / 提案", change: weekly.winRate, formula: `${wonCompanies.length}社 / ${proposalCompanies.length}社`, rows: companyRows(proposalCompanies, (company) => company.status) },
     { label: "提案→受注CVR", value: pct(kpis.winRate), sub: `${kpis.introduced}社 / ${kpis.proposals}社`, change: weekly.winRate, formula: "受注企業数 / 提案済み企業数", rows: companyRows(proposalCompanies, (company) => company.status) },
     { label: "受注リードタイム", value: `${num(averageLeadTime)}日`, sub: `初回商談→申込書回収 / ${leadTimeCompanies.length}社`, change: weekly.leadTime, formula: "受注企業ごとの 申込書回収日 - 初回商談日 の平均", rows: leadTimeCompanies.map((company) => ({ label: company.name, value: `${num(getLeadTimeDays(company) ?? 0)}日`, meta: `${company.initialMeetingDate ?? "-"} → ${company.applicationReceivedDate ?? "-"}`, companyId: company.id })) },
-    { label: "MRR合計", value: yen(kpis.mrr), sub: "契約開始済み", change: weekly.mrr, formula: "受注企業の想定MRR合計", rows: companyRows(wonCompanies, (company) => yen(company.expectedMrr)) },
-    { label: "ARR見込み", value: yen(contractedArrForecast), sub: "契約企業のMRR × 契約期間", change: weekly.arrForecast, formula: "受注企業ごとの 想定MRR × 契約期間 の合計", rows: companyRows(wonCompanies, (company) => yen(getArrForecast(company))) },
-    { label: "ARPU", value: yen(averageArpu), sub: `受注${wonCompanies.length}社の平均MRR`, change: weekly.arpu, formula: "受注企業のMRR合計 / 受注企業数", rows: companyRows(wonCompanies, (company) => yen(company.expectedMrr)) },
+    { label: "MRR合計", value: yen(kpis.mrr), sub: "契約開始済み", change: weekly.mrr, formula: "契約開始日が今日以前の企業の想定MRR合計", rows: companyRows(contractedCompanies, (company) => yen(company.expectedMrr)) },
+    { label: "ARR見込み", value: yen(contractedArrForecast), sub: "契約開始済み × 契約期間", change: weekly.arrForecast, formula: "契約開始日が今日以前の企業ごとの 想定MRR × 契約期間 の合計", rows: companyRows(contractedCompanies, (company) => yen(getArrForecast(company))) },
+    { label: "ARPU", value: yen(averageArpu), sub: `契約開始済み${contractedCompanies.length}社の平均MRR`, change: weekly.arpu, formula: "契約開始日が今日以前の企業のMRR合計 / 契約開始済み企業数", rows: companyRows(contractedCompanies, (company) => yen(company.expectedMrr)) },
     { label: "成功報酬累計", value: yen(kpis.successFees), sub: "入社数ベース", change: weekly.successFees, formula: "入社予定者数 × 400,000円", rows: latestFunnels.map((funnel) => ({ label: getCompanyName(data, funnel.companyId), value: yen(funnel.joins * 400000), meta: `入社 ${num(funnel.joins)}人`, companyId: data.companies.some((company) => company.id === funnel.companyId) ? funnel.companyId : undefined })) },
     { label: "ワーカー送客数", value: `${num(kpis.referrals)}人`, sub: "応募数", change: weekly.referrals, formula: "企業別応募数の合計", rows: funnelRows((funnel) => funnel.applications, "人") },
     { label: "職場体験実施数", value: `${num(kpis.shifts)}件`, sub: "タイミー勤務", change: weekly.shifts, formula: "企業別タイミー勤務数の合計", rows: funnelRows((funnel) => funnel.shifts, "件") },
@@ -398,7 +400,7 @@ function SalesView({
   const [isAddingCompany, setIsAddingCompany] = useState(false);
   const totals = getPipelineTotals(data);
   const kpis = getExecutiveKpis(data);
-  const arrForecastCompanies = data.companies.filter((company) => company.status !== "失注" && getArrForecast(company) > 0);
+  const arrForecastCompanies = data.companies.filter((company) => hasContractStarted(company) && getArrForecast(company) > 0);
   const arrForecast = sum(arrForecastCompanies, getArrForecast);
   const weekly = getWeeklySalesComparison(data);
 
@@ -411,10 +413,10 @@ function SalesView({
       />
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         <MetricCard label="オープン案件 想定MRR" value={yen(totals.expectedMrr)} sub="失注・受注を除く" change={weekly.expectedMrr} />
-        <MetricCard label="契約済みMRR" value={yen(totals.contractedMrr)} sub="受注ステータス" tone="good" change={weekly.contractedMrr} />
+        <MetricCard label="契約済みMRR" value={yen(totals.contractedMrr)} sub="契約開始済み" tone="good" change={weekly.contractedMrr} />
         <MetricCard label="想定成功報酬パイプライン" value={yen(totals.expectedSuccessFee)} sub="想定人数 × 単価" change={weekly.expectedSuccessFee} />
-        <MetricCard label="ARR見込み" value={yen(arrForecast)} sub="想定MRR × 契約期間" tone="good" change={weekly.arrForecast} />
-        <MetricCard label="ARR見込み案件数" value={`${num(arrForecastCompanies.length)}件`} sub="失注を除く対象案件" change={weekly.arrForecastCompanies} />
+        <MetricCard label="ARR見込み" value={yen(arrForecast)} sub="契約開始済み × 契約期間" tone="good" change={weekly.arrForecast} />
+        <MetricCard label="ARR見込み案件数" value={`${num(arrForecastCompanies.length)}件`} sub="契約開始済みの対象案件" change={weekly.arrForecastCompanies} />
         <MetricCard label="提案→受注CVR" value={pct(kpis.winRate)} sub={`${kpis.introduced}社 / ${kpis.proposals}社`} tone="good" change={weekly.winRate} />
       </div>
       {mode === "table" ? <PipelineTable companies={data.companies} onSelect={onSelect} /> : <Kanban companies={data.companies} onSelect={onSelect} />}
@@ -1801,7 +1803,7 @@ function getExecutiveTrendData(data: KpiData) {
   return [...months].sort().map((month) => {
     const monthData = getDataAsOf(data, getMonthEnd(month));
     const kpis = getExecutiveKpis(monthData);
-    const arrForecastCompanies = monthData.companies.filter((company) => company.status !== "失注" && getArrForecast(company) > 0);
+    const arrForecastCompanies = monthData.companies.filter((company) => hasContractStarted(company) && getArrForecast(company) > 0);
 
     return {
       month,
@@ -1824,12 +1826,14 @@ function getWeeklyExecutiveComparison(data: KpiData): Record<string, MetricChang
   const previous = getExecutiveKpis(previousData);
   const currentWon = data.companies.filter((company) => company.status === "受注");
   const previousWon = previousData.companies.filter((company) => company.status === "受注");
+  const currentContracted = data.companies.filter(hasContractStarted);
+  const previousContracted = previousData.companies.filter(hasContractStarted);
   const currentLeadTime = getAverageLeadTime(currentWon);
   const previousLeadTime = getAverageLeadTime(previousWon);
-  const currentArpu = Math.round(current.mrr / Math.max(1, current.introduced));
-  const previousArpu = Math.round(previous.mrr / Math.max(1, previous.introduced));
-  const currentArrForecast = sum(currentWon, getArrForecast);
-  const previousArrForecast = sum(previousWon, getArrForecast);
+  const currentArpu = Math.round(current.mrr / Math.max(1, currentContracted.length));
+  const previousArpu = Math.round(previous.mrr / Math.max(1, previousContracted.length));
+  const currentArrForecast = sum(currentContracted, getArrForecast);
+  const previousArrForecast = sum(previousContracted, getArrForecast);
 
   return {
     introduced: makeMetricChange(current.introduced, previous.introduced, "社"),
@@ -1857,8 +1861,8 @@ function getWeeklySalesComparison(data: KpiData): Record<string, MetricChange> {
   const previousTotals = getPipelineTotals(previousData);
   const currentKpis = getExecutiveKpis(data);
   const previousKpis = getExecutiveKpis(previousData);
-  const currentArrCompanies = data.companies.filter((company) => company.status !== "失注" && getArrForecast(company) > 0);
-  const previousArrCompanies = previousData.companies.filter((company) => company.status !== "失注" && getArrForecast(company) > 0);
+  const currentArrCompanies = data.companies.filter((company) => hasContractStarted(company) && getArrForecast(company) > 0);
+  const previousArrCompanies = previousData.companies.filter((company) => hasContractStarted(company) && getArrForecast(company) > 0);
 
   return {
     expectedMrr: makeMetricChange(currentTotals.expectedMrr, previousTotals.expectedMrr, "円"),
@@ -1924,12 +1928,13 @@ function getDataAsOf(data: KpiData, cutoff: string): KpiData {
 }
 
 function getCompanyAsOf(company: Company, cutoff: string): Company {
-  const wonDate = company.applicationReceivedDate ?? company.contractStartDate ?? company.contractTargetDate;
-  if (company.status === "受注" && wonDate && wonDate <= cutoff) return company;
-  if (company.status === "失注") return company;
-  if (company.proposalDate && company.proposalDate <= cutoff) return { ...company, status: "提案中" };
-  if (company.initialMeetingDate && company.initialMeetingDate <= cutoff) return { ...company, status: "初回商談" };
-  return { ...company, status: "リード" };
+  const asOfCompany = company.contractStartDate && company.contractStartDate > cutoff ? { ...company, contractStartDate: null } : company;
+  const wonDate = asOfCompany.applicationReceivedDate ?? asOfCompany.contractStartDate ?? asOfCompany.contractTargetDate;
+  if (asOfCompany.status === "受注" && wonDate && wonDate <= cutoff) return asOfCompany;
+  if (asOfCompany.status === "失注") return asOfCompany;
+  if (asOfCompany.proposalDate && asOfCompany.proposalDate <= cutoff) return { ...asOfCompany, status: "提案中" };
+  if (asOfCompany.initialMeetingDate && asOfCompany.initialMeetingDate <= cutoff) return { ...asOfCompany, status: "初回商談" };
+  return { ...asOfCompany, status: "リード" };
 }
 
 function getPreviousMonday() {

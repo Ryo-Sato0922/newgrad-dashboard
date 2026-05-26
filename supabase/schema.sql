@@ -1,7 +1,7 @@
 create extension if not exists "uuid-ossp";
 
 create type company_status as enum ('リード', '初回商談', '提案中', 'PoC', '契約交渉', '受注', '失注');
-create type client_phase as enum ('P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7');
+create type client_phase as enum ('P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', '失注');
 create type experiment_status as enum ('未実施', '検証中', '成功', '失敗');
 
 create table companies (

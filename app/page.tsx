@@ -80,7 +80,7 @@ const nav = [
 ] as const;
 
 const statuses: CompanyStatus[] = ["リード", "初回商談", "提案中", "PoC", "契約交渉", "受注", "失注"];
-const clientPhases: ClientPhase[] = ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7"];
+const clientPhases: ClientPhase[] = ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "失注"];
 const experimentStatuses: ExperimentStatus[] = ["未実施", "検証中", "成功", "失敗"];
 const areas = ["北海道", "東北", "関東", "中部", "近畿", "中国", "四国", "九州沖縄"];
 
@@ -92,7 +92,8 @@ const clientPhaseLabels: Record<ClientPhase, string> = {
   P4: "決裁者との導入合意",
   P5: "価格・導入時期の合意",
   P6: "稟議決裁",
-  P7: "申込書回収"
+  P7: "申込書回収",
+  失注: "失注"
 };
 
 const statusStyle: Record<CompanyStatus, string> = {
@@ -113,7 +114,8 @@ const phaseStyle: Record<ClientPhase, string> = {
   P4: "border-blue-200 bg-blue-50 text-blue-800",
   P5: "border-sky-200 bg-sky-50 text-sky-800",
   P6: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  P7: "border-green-200 bg-green-50 text-green-700"
+  P7: "border-green-200 bg-green-50 text-green-700",
+  失注: "border-red-200 bg-red-50 text-red-700"
 };
 
 export default function Home() {
@@ -296,6 +298,7 @@ function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompa
   const dealStageCompanies = data.companies.filter((company) => company.status !== "リード");
   const latestFunnels = getLatestFunnels(data.funnels);
   const latestUnit = data.unitEconomics[data.unitEconomics.length - 1];
+  const contractedArrForecast = sum(wonCompanies, getArrForecast);
   const companyRows = (companies: Company[], value: (company: Company) => string): DrilldownRow[] => companies.map((company) => ({
     label: company.name,
     value: value(company),
@@ -316,6 +319,7 @@ function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompa
     { label: "提案→受注CVR", value: pct(kpis.winRate), sub: `${kpis.introduced}社 / ${kpis.proposals}社`, change: weekly.winRate, formula: "受注企業数 / 提案済み企業数", rows: companyRows(proposalCompanies, (company) => company.status) },
     { label: "受注リードタイム", value: `${num(averageLeadTime)}日`, sub: `初回商談→申込書回収 / ${leadTimeCompanies.length}社`, change: weekly.leadTime, formula: "受注企業ごとの 申込書回収日 - 初回商談日 の平均", rows: leadTimeCompanies.map((company) => ({ label: company.name, value: `${num(getLeadTimeDays(company) ?? 0)}日`, meta: `${company.initialMeetingDate ?? "-"} → ${company.applicationReceivedDate ?? "-"}`, companyId: company.id })) },
     { label: "MRR合計", value: yen(kpis.mrr), sub: "契約開始済み", change: weekly.mrr, formula: "受注企業の想定MRR合計", rows: companyRows(wonCompanies, (company) => yen(company.expectedMrr)) },
+    { label: "ARR見込み", value: yen(contractedArrForecast), sub: "契約企業のMRR × 契約期間", change: weekly.arrForecast, formula: "受注企業ごとの 想定MRR × 契約期間 の合計", rows: companyRows(wonCompanies, (company) => yen(getArrForecast(company))) },
     { label: "ARPU", value: yen(averageArpu), sub: `受注${wonCompanies.length}社の平均MRR`, change: weekly.arpu, formula: "受注企業のMRR合計 / 受注企業数", rows: companyRows(wonCompanies, (company) => yen(company.expectedMrr)) },
     { label: "成功報酬累計", value: yen(kpis.successFees), sub: "入社数ベース", change: weekly.successFees, formula: "入社予定者数 × 400,000円", rows: latestFunnels.map((funnel) => ({ label: getCompanyName(data, funnel.companyId), value: yen(funnel.joins * 400000), meta: `入社 ${num(funnel.joins)}人`, companyId: data.companies.some((company) => company.id === funnel.companyId) ? funnel.companyId : undefined })) },
     { label: "ワーカー送客数", value: `${num(kpis.referrals)}人`, sub: "応募数", change: weekly.referrals, formula: "企業別応募数の合計", rows: funnelRows((funnel) => funnel.applications, "人") },
@@ -397,19 +401,6 @@ function SalesView({
   const arrForecast = sum(arrForecastCompanies, getArrForecast);
   const weekly = getWeeklySalesComparison(data);
 
-  async function deleteCompany(id: string) {
-    if (isSupabaseConfigured) {
-      await deleteCompanyRecord(id);
-    }
-    setData((current) => ({
-      ...current,
-      companies: current.companies.filter((company) => company.id !== id),
-      funnels: current.funnels.filter((funnel) => funnel.companyId !== id),
-      surveys: current.surveys.filter((survey) => survey.companyId !== id)
-    }));
-    afterSave("企業を削除しました");
-  }
-
   return (
     <div className="space-y-6">
       <SectionHeader
@@ -425,7 +416,7 @@ function SalesView({
         <MetricCard label="ARR見込み案件数" value={`${num(arrForecastCompanies.length)}件`} sub="失注を除く対象案件" change={weekly.arrForecastCompanies} />
         <MetricCard label="提案→受注CVR" value={pct(kpis.winRate)} sub={`${kpis.introduced}社 / ${kpis.proposals}社`} tone="good" change={weekly.winRate} />
       </div>
-      {mode === "table" ? <PipelineTable companies={data.companies} onSelect={onSelect} onDelete={deleteCompany} /> : <Kanban companies={data.companies} onSelect={onSelect} />}
+      {mode === "table" ? <PipelineTable companies={data.companies} onSelect={onSelect} /> : <Kanban companies={data.companies} onSelect={onSelect} />}
       <Card>
         <div className="mb-4 text-sm font-semibold">失注理由分析</div>
         <SimpleBarChart data={getLostReasonData(data)} xKey="reason" bars={[{ key: "count", name: "件数", color: "#dc2626" }]} />
@@ -437,7 +428,7 @@ function SalesView({
   );
 }
 
-function PipelineTable({ companies, onSelect, onDelete }: { companies: Company[]; onSelect: (company: Company) => void; onDelete: (id: string) => void }) {
+function PipelineTable({ companies, onSelect }: { companies: Company[]; onSelect: (company: Company) => void }) {
   return (
     <Card className="overflow-hidden p-0">
       <div className="overflow-x-auto">
@@ -465,11 +456,11 @@ function PipelineTable({ companies, onSelect, onDelete }: { companies: Company[]
                     type="button"
                     onClick={(event) => {
                       event.stopPropagation();
-                      onDelete(company.id);
+                      onSelect(company);
                     }}
-                    className="inline-flex h-8 items-center justify-center rounded-md border border-red-200 px-2.5 text-xs font-medium text-danger hover:bg-red-50"
+                    className="inline-flex h-8 items-center justify-center rounded-md border border-line px-2.5 text-xs font-medium text-muted hover:bg-panel"
                   >
-                    削除
+                    編集
                   </button>
                 </td>
               </tr>
@@ -520,27 +511,13 @@ function ClientView({
   onSelect: (company: Company) => void;
 }) {
   const [isAddingClient, setIsAddingClient] = useState(false);
-  const activeClients = data.companies.filter((company) => company.status !== "失注");
-  const phaseCounts = Object.fromEntries(clientPhases.map((phase) => [phase, activeClients.filter((company) => getClientPhase(company) === phase).length])) as Record<ClientPhase, number>;
-  const p7Clients = activeClients.filter((company) => getClientPhase(company) === "P7");
-  const decisionClients = activeClients.filter((company) => ["P4", "P5", "P6"].includes(getClientPhase(company)));
-  const averagePhase = activeClients.length > 0 ? sum(activeClients, (company) => clientPhases.indexOf(getClientPhase(company))) / activeClients.length : 0;
-
-  async function updateClientPhase(company: Company, clientPhase: ClientPhase) {
-    const updated = { ...company, clientPhase };
-    if (isSupabaseConfigured) {
-      const result = await upsertCompany(updated);
-      if (result?.clientPipelinePersisted === false) {
-        afterSave("DBにClientカラムを追加してください");
-        return;
-      }
-    }
-    setData((current) => ({
-      ...current,
-      companies: current.companies.map((item) => (item.id === company.id ? updated : item))
-    }));
-    afterSave("商談フェーズを更新しました");
-  }
+  const clients = data.companies;
+  const nonLostClients = clients.filter((company) => getClientPhase(company) !== "失注");
+  const phaseCounts = Object.fromEntries(clientPhases.map((phase) => [phase, clients.filter((company) => getClientPhase(company) === phase).length])) as Record<ClientPhase, number>;
+  const p7Clients = clients.filter((company) => getClientPhase(company) === "P7");
+  const decisionClients = clients.filter((company) => ["P4", "P5", "P6"].includes(getClientPhase(company)));
+  const averagePhaseIndex = nonLostClients.length > 0 ? Math.round(sum(nonLostClients, (company) => clientPhases.indexOf(getClientPhase(company))) / nonLostClients.length) : 0;
+  const averagePhase = clientPhases[Math.min(averagePhaseIndex, 7)];
 
   return (
     <div className="space-y-6">
@@ -550,16 +527,16 @@ function ClientView({
         action={<button onClick={() => setIsAddingClient(true)} className="inline-flex items-center gap-2 rounded-md border border-yellow-300 bg-accent px-3 py-2 text-xs font-semibold text-ink shadow-sm hover:bg-accent-strong"><Plus className="size-4" />Pipeline作成</button>}
       />
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="管理クライアント" value={`${num(activeClients.length)}社`} sub="失注を除く" />
+        <MetricCard label="管理クライアント" value={`${num(clients.length)}社`} sub="登録済み" />
         <MetricCard label="申込書回収" value={`${num(p7Clients.length)}社`} sub="P7到達" tone="good" />
         <MetricCard label="決裁合意〜稟議" value={`${num(decisionClients.length)}社`} sub="P4-P6" />
-        <MetricCard label="平均フェーズ" value={`P${Math.round(averagePhase)}`} sub={clientPhaseLabels[`P${Math.round(averagePhase)}` as ClientPhase] ?? "未設定"} />
+        <MetricCard label="平均フェーズ" value={averagePhase} sub={clientPhaseLabels[averagePhase] ?? "未設定"} />
       </div>
       <Card className="overflow-hidden p-0">
         <div className="overflow-x-auto">
-          <div className="grid min-w-[1500px] grid-cols-8 gap-3 p-4">
+          <div className="grid min-w-[1680px] grid-cols-9 gap-3 p-4">
             {clientPhases.map((phase) => {
-              const items = activeClients.filter((company) => getClientPhase(company) === phase);
+              const items = clients.filter((company) => getClientPhase(company) === phase);
               return (
                 <div key={phase} className="rounded-lg border border-line bg-yellow-50/50 p-3">
                   <div className="flex min-h-12 items-start justify-between gap-2">
@@ -582,18 +559,7 @@ function ClientView({
                           <div className="mt-2 rounded-md bg-panel px-2 py-1.5 text-xs text-muted">
                             NA予定日: <span className="font-semibold text-ink">{company.naScheduledDate ?? "-"}</span>
                           </div>
-                          {company.dealMemo ? <div className="mt-2 line-clamp-3 text-xs leading-5 text-muted">{company.dealMemo}</div> : null}
                         </button>
-                        <label className="mt-3 block">
-                          <span className="text-[11px] font-medium text-muted">商談フェーズ</span>
-                          <select
-                            value={getClientPhase(company)}
-                            onChange={(event) => updateClientPhase(company, event.target.value as ClientPhase)}
-                            className="mt-1 h-9 w-full rounded-md border border-line bg-white px-2 text-xs outline-none transition focus:border-accent-strong focus:ring-2 focus:ring-yellow-100"
-                          >
-                            {clientPhases.map((option) => <option key={option} value={option}>{option} {clientPhaseLabels[option]}</option>)}
-                          </select>
-                        </label>
                       </div>
                     ))}
                     {items.length === 0 ? <div className="rounded-md border border-dashed border-line bg-white/70 p-3 text-center text-xs text-muted">該当なし</div> : null}
@@ -617,7 +583,7 @@ function ClientView({
                 return (
                   <tr key={company.id} onClick={() => onSelect(company)} className="cursor-pointer border-b border-line last:border-0 hover:bg-yellow-50/70">
                     <td className="px-4 py-3 font-medium text-ink">{company.name}</td>
-                    <td className="px-4 py-3"><Pill className={phaseStyle[phase]}>{phase} {clientPhaseLabels[phase]}</Pill></td>
+                    <td className="px-4 py-3"><Pill className={phaseStyle[phase]}>{formatClientPhaseOption(phase)}</Pill></td>
                     <td className="px-4 py-3 text-muted">{company.naScheduledDate ?? "-"}</td>
                     <td className="px-4 py-3"><Pill className={statusStyle[company.status]}>{company.status}</Pill></td>
                     <td className="px-4 py-3 text-muted">{company.industry}</td>
@@ -1038,7 +1004,7 @@ function CompanyForm({ setData, afterSave, onDone, title = "企業を追加" }: 
       area: form.area,
       owner: form.owner,
       email: "",
-      status: form.status,
+      status: form.clientPhase === "失注" ? "失注" : form.status,
       clientPhase: form.clientPhase,
       naScheduledDate: emptyToNull(form.naScheduledDate),
       dealMemo: form.dealMemo,
@@ -1080,7 +1046,7 @@ function CompanyForm({ setData, afterSave, onDone, title = "企業を追加" }: 
           <Select label="所在地エリア" value={form.area} options={areas} onChange={(area) => setForm({ ...form, area })} />
           <Input label="担当者名" value={form.owner} onChange={(owner) => setForm({ ...form, owner })} required />
           <Select label="FCSTステータス" value={form.status} options={statuses} onChange={(status) => setForm({ ...form, status: status as CompanyStatus })} />
-          <Select label="商談フェーズ" value={form.clientPhase} options={clientPhases.map((phase) => ({ value: phase, label: `${phase} ${clientPhaseLabels[phase]}` }))} onChange={(clientPhase) => setForm({ ...form, clientPhase: clientPhase as ClientPhase })} />
+          <Select label="商談フェーズ" value={form.clientPhase} options={clientPhases.map((phase) => ({ value: phase, label: formatClientPhaseOption(phase) }))} onChange={(clientPhase) => setForm({ ...form, clientPhase: clientPhase as ClientPhase, status: clientPhase === "失注" ? "失注" : form.status })} />
         </FormSection>
         <FormSection title="Client Pipeline">
           <Input label="NA予定日" type="date" value={form.naScheduledDate} onChange={(naScheduledDate) => setForm({ ...form, naScheduledDate })} />
@@ -1101,7 +1067,7 @@ function CompanyForm({ setData, afterSave, onDone, title = "企業を追加" }: 
           <Input label="契約開始日" type="date" value={form.contractStartDate} onChange={(contractStartDate) => setForm({ ...form, contractStartDate })} />
           <Input label="営業工数" type="number" value={form.salesHours} onChange={(salesHours) => setForm({ ...form, salesHours })} />
           <Input label="CS工数" type="number" value={form.csHours} onChange={(csHours) => setForm({ ...form, csHours })} />
-          <Input label="失注理由" value={form.lostReason} onChange={(lostReason) => setForm({ ...form, lostReason })} />
+          <Input label="失注理由" value={form.lostReason} onChange={(lostReason) => setForm({ ...form, lostReason })} required={form.clientPhase === "失注"} />
           <Textarea label="メモ" value={form.memo} onChange={(memo) => setForm({ ...form, memo })} className="lg:col-span-3" />
         </FormSection>
         <SubmitButton label="企業を保存" />
@@ -1543,7 +1509,7 @@ function CompanyModal({
       area: form.area,
       owner: form.owner,
       email: form.email,
-      status: form.status,
+      status: form.clientPhase === "失注" ? "失注" : form.status,
       clientPhase: form.clientPhase,
       naScheduledDate: emptyToNull(form.naScheduledDate),
       dealMemo: form.dealMemo,
@@ -1613,7 +1579,7 @@ function CompanyModal({
                   <Select label="所在地エリア" value={form.area} options={areas} onChange={(area) => setForm({ ...form, area })} />
                   <Input label="担当者名" value={form.owner} onChange={(owner) => setForm({ ...form, owner })} required />
                   <Select label="FCSTステータス" value={form.status} options={statuses} onChange={(status) => setForm({ ...form, status: status as CompanyStatus })} />
-                  <Select label="商談フェーズ" value={form.clientPhase} options={clientPhases.map((phase) => ({ value: phase, label: `${phase} ${clientPhaseLabels[phase]}` }))} onChange={(clientPhase) => setForm({ ...form, clientPhase: clientPhase as ClientPhase })} />
+                  <Select label="商談フェーズ" value={form.clientPhase} options={clientPhases.map((phase) => ({ value: phase, label: formatClientPhaseOption(phase) }))} onChange={(clientPhase) => setForm({ ...form, clientPhase: clientPhase as ClientPhase, status: clientPhase === "失注" ? "失注" : form.status })} />
                 </FormSection>
                 <FormSection title="Client Pipeline">
                   <Input label="NA予定日" type="date" value={form.naScheduledDate} onChange={(naScheduledDate) => setForm({ ...form, naScheduledDate })} />
@@ -1634,7 +1600,7 @@ function CompanyModal({
                   <Input label="契約開始日" type="date" value={form.contractStartDate} onChange={(contractStartDate) => setForm({ ...form, contractStartDate })} />
                   <Input label="営業工数" type="number" value={form.salesHours} onChange={(salesHours) => setForm({ ...form, salesHours })} />
                   <Input label="CS工数" type="number" value={form.csHours} onChange={(csHours) => setForm({ ...form, csHours })} />
-                  <Input label="失注理由" value={form.lostReason} onChange={(lostReason) => setForm({ ...form, lostReason })} />
+                  <Input label="失注理由" value={form.lostReason} onChange={(lostReason) => setForm({ ...form, lostReason })} required={form.clientPhase === "失注"} />
                   <Textarea label="メモ" value={form.memo} onChange={(memo) => setForm({ ...form, memo })} className="lg:col-span-3" />
                 </FormSection>
                 <SubmitButton label="変更を保存" />
@@ -1643,7 +1609,7 @@ function CompanyModal({
           ) : (
             <>
               <div className="grid gap-3 sm:grid-cols-3"><MetricCard label="ARR見込み" value={yen(getArrForecast(company))} /><MetricCard label="契約期間" value={`${company.contractMonths ?? 0}ヶ月`} /><MetricCard label="想定MRR" value={yen(company.expectedMrr)} /><MetricCard label="成功報酬単価" value={yen(company.successFee)} /></div>
-              <div className="grid gap-3 sm:grid-cols-2"><Info label="所在地エリア" value={company.area} /><Info label="FCSTステータス" value={company.status} /><Info label="商談フェーズ" value={`${getClientPhase(company)} ${clientPhaseLabels[getClientPhase(company)]}`} /><Info label="NA予定日" value={company.naScheduledDate ?? "-"} /><Info label="商談メモ" value={company.dealMemo || "-"} /><Info label="初回商談日" value={company.initialMeetingDate ?? "-"} /><Info label="提案日" value={company.proposalDate ?? "-"} /><Info label="申込回収予定日" value={company.applicationReceivedDate ?? "-"} /><Info label="受注リードタイム" value={getLeadTimeDays(company) === null ? "-" : `${num(getLeadTimeDays(company) ?? 0)}日`} /><Info label="契約予定日" value={company.contractTargetDate ?? "-"} /><Info label="契約開始日" value={company.contractStartDate ?? "-"} /><Info label="失注理由" value={company.lostReason ?? "-"} /><Info label="メモ" value={company.memo} /></div>
+              <div className="grid gap-3 sm:grid-cols-2"><Info label="所在地エリア" value={company.area} /><Info label="FCSTステータス" value={company.status} /><Info label="商談フェーズ" value={formatClientPhaseOption(getClientPhase(company))} /><Info label="NA予定日" value={company.naScheduledDate ?? "-"} /><Info label="商談メモ" value={company.dealMemo || "-"} /><Info label="初回商談日" value={company.initialMeetingDate ?? "-"} /><Info label="提案日" value={company.proposalDate ?? "-"} /><Info label="申込回収予定日" value={company.applicationReceivedDate ?? "-"} /><Info label="受注リードタイム" value={getLeadTimeDays(company) === null ? "-" : `${num(getLeadTimeDays(company) ?? 0)}日`} /><Info label="契約予定日" value={company.contractTargetDate ?? "-"} /><Info label="契約開始日" value={company.contractStartDate ?? "-"} /><Info label="失注理由" value={company.lostReason ?? "-"} /><Info label="メモ" value={company.memo} /></div>
             </>
           )}
           {funnel ? <Card><div className="mb-4 text-sm font-semibold">企業別ワーカーファネル</div><FunnelChart data={getFunnelStages([funnel])} /></Card> : null}
@@ -1751,12 +1717,17 @@ function getArrForecast(company: Company) {
 
 function getClientPhase(company: Company): ClientPhase {
   if (company.clientPhase) return company.clientPhase;
+  if (company.status === "失注") return "失注";
   if (company.status === "受注") return "P7";
   if (company.status === "契約交渉") return "P6";
   if (company.status === "PoC") return "P3";
   if (company.status === "提案中") return "P2";
   if (company.status === "初回商談") return "P1";
   return "P0";
+}
+
+function formatClientPhaseOption(phase: ClientPhase) {
+  return phase === "失注" ? "失注" : `${phase} ${clientPhaseLabels[phase]}`;
 }
 
 function normalizeAppData(data: AppData): AppData {
@@ -1812,6 +1783,8 @@ function getWeeklyExecutiveComparison(data: KpiData): Record<string, MetricChang
   const previousLeadTime = getAverageLeadTime(previousWon);
   const currentArpu = Math.round(current.mrr / Math.max(1, current.introduced));
   const previousArpu = Math.round(previous.mrr / Math.max(1, previous.introduced));
+  const currentArrForecast = sum(currentWon, getArrForecast);
+  const previousArrForecast = sum(previousWon, getArrForecast);
 
   return {
     introduced: makeMetricChange(current.introduced, previous.introduced, "社"),
@@ -1820,6 +1793,7 @@ function getWeeklyExecutiveComparison(data: KpiData): Record<string, MetricChang
     winRate: makeMetricChange(current.winRate, previous.winRate, "pt", true),
     leadTime: makeMetricChange(currentLeadTime, previousLeadTime, "日"),
     mrr: makeMetricChange(current.mrr, previous.mrr, "円"),
+    arrForecast: makeMetricChange(currentArrForecast, previousArrForecast, "円"),
     arpu: makeMetricChange(currentArpu, previousArpu, "円"),
     successFees: makeMetricChange(current.successFees, previous.successFees, "円"),
     referrals: makeMetricChange(current.referrals, previous.referrals, "人"),

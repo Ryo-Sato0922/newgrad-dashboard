@@ -114,10 +114,12 @@ create index student_surveys_company_idx on student_surveys(company_id);
 
 -- Existing projects can run this migration safely after the first schema was already created.
 do $$ begin
-  create type client_phase as enum ('P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7');
+  create type client_phase as enum ('P0', 'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7', '失注');
 exception
   when duplicate_object then null;
 end $$;
+
+alter type client_phase add value if not exists '失注';
 
 alter table companies add column if not exists client_phase client_phase not null default 'P0';
 alter table companies add column if not exists na_scheduled_date date;

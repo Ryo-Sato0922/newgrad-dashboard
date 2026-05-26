@@ -277,6 +277,7 @@ export default function Home() {
           data={kpiData}
           company={selectedCompany}
           setData={setData}
+          afterSave={afterSave}
           onCompanyChange={setSelectedCompany}
           onClose={() => setSelectedCompany(null)}
         />
@@ -1495,12 +1496,14 @@ function CompanyModal({
   data,
   company,
   setData,
+  afterSave,
   onCompanyChange,
   onClose
 }: {
   data: KpiData;
   company: Company;
   setData: React.Dispatch<React.SetStateAction<AppData>>;
+  afterSave: (message: string) => void;
   onCompanyChange: (company: Company | null) => void;
   onClose: () => void;
 }) {
@@ -1559,15 +1562,17 @@ function CompanyModal({
       salesHours: toNumber(form.salesHours),
       csHours: toNumber(form.csHours)
     };
+    let clientPipelinePersisted = true;
     if (isSupabaseConfigured) {
       const result = await upsertCompany(updated);
       if (result?.clientPipelinePersisted === false) {
-        return;
+        clientPipelinePersisted = false;
       }
     }
     setData((current) => ({ ...current, companies: current.companies.map((item) => (item.id === updated.id ? updated : item)) }));
     onCompanyChange(updated);
     setIsEditing(false);
+    afterSave(clientPipelinePersisted ? "企業データを更新しました" : "企業データを更新しました。DBにClientカラムを追加してください");
   }
 
   async function deleteCompany() {

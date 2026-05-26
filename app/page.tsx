@@ -432,9 +432,9 @@ function PipelineTable({ companies, onSelect }: { companies: Company[]; onSelect
   return (
     <Card className="overflow-hidden p-0">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1160px] text-left text-sm">
+        <table className="w-full min-w-[1260px] text-left text-sm">
           <thead className="border-b border-line bg-yellow-50 text-xs text-muted">
-            <tr>{["企業名", "業界", "エリア", "担当", "FCSTステータス", "契約期間", "ARR見込み", "想定MRR", "成功報酬", "採用人数", "提案日", "契約予定日", "操作"].map((head) => <th key={head} className="px-4 py-3 font-semibold">{head}</th>)}</tr>
+            <tr>{["企業名", "業界", "エリア", "担当", "FCSTステータス", "商談ステータス", "契約期間", "ARR見込み", "想定MRR", "成功報酬", "採用人数", "提案日", "契約予定日", "操作"].map((head) => <th key={head} className="px-4 py-3 font-semibold">{head}</th>)}</tr>
           </thead>
           <tbody>
             {companies.map((company) => (
@@ -444,6 +444,7 @@ function PipelineTable({ companies, onSelect }: { companies: Company[]; onSelect
                 <td className="px-4 py-3 text-muted">{company.area}</td>
                 <td className="px-4 py-3 text-muted">{company.owner}</td>
                 <td className="px-4 py-3"><Pill className={statusStyle[company.status]}>{company.status}</Pill></td>
+                <td className="px-4 py-3"><Pill className={phaseStyle[getClientPhase(company)]}>{formatClientPhaseOption(getClientPhase(company))}</Pill></td>
                 <td className="px-4 py-3">{company.contractMonths ?? 0}ヶ月</td>
                 <td className="px-4 py-3 font-semibold text-ink">{yen(getArrForecast(company))}</td>
                 <td className="px-4 py-3">{yen(company.expectedMrr)}</td>
@@ -1353,25 +1354,55 @@ function ExperimentDeleteList({ experiments, onDelete }: { experiments: Experime
 }
 
 function DeleteRow({ title, meta, onDelete, onEdit }: { title: string; meta: string; onDelete: () => void; onEdit?: () => void }) {
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+
   return (
-    <div className="flex flex-col gap-3 rounded-md border border-line bg-white p-3 transition hover:border-yellow-300 hover:bg-yellow-50/40 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0">
-        <div className="truncate text-sm font-medium text-ink">{title}</div>
-        <div className="mt-1 text-xs text-muted">{meta}</div>
+    <>
+      <div className="flex flex-col gap-3 rounded-md border border-line bg-white p-3 transition hover:border-yellow-300 hover:bg-yellow-50/40 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-ink">{title}</div>
+          <div className="mt-1 text-xs text-muted">{meta}</div>
+        </div>
+        <div className="flex gap-2">
+          {onEdit ? <button type="button" onClick={onEdit} className="inline-flex h-9 items-center justify-center rounded-md border border-line bg-white px-3 text-xs font-semibold text-muted hover:bg-yellow-50 hover:text-ink">編集</button> : null}
+          <button type="button" onClick={() => setIsConfirmOpen(true)} className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-red-200 px-3 text-xs font-medium text-danger hover:bg-red-50">
+            <Trash2 className="size-4" />
+            削除
+          </button>
+        </div>
       </div>
-      <div className="flex gap-2">
-        {onEdit ? <button type="button" onClick={onEdit} className="inline-flex h-9 items-center justify-center rounded-md border border-line bg-white px-3 text-xs font-semibold text-muted hover:bg-yellow-50 hover:text-ink">編集</button> : null}
-        <button type="button" onClick={onDelete} className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-red-200 px-3 text-xs font-medium text-danger hover:bg-red-50">
-          <Trash2 className="size-4" />
-          削除
-        </button>
-      </div>
-    </div>
+      {isConfirmOpen ? (
+        <ConfirmDialog
+          title="本当に削除しますか？"
+          description={`${title} を削除します。この操作は取り消せません。`}
+          onCancel={() => setIsConfirmOpen(false)}
+          onConfirm={() => {
+            setIsConfirmOpen(false);
+            onDelete();
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
 function EmptyState({ message }: { message: string }) {
   return <div className="rounded-md border border-dashed border-line bg-panel p-4 text-sm text-muted">{message}</div>;
+}
+
+function ConfirmDialog({ title, description, onCancel, onConfirm }: { title: string; description: string; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[70] grid place-items-center bg-black/30 p-4">
+      <div className="w-full max-w-md rounded-lg border border-line bg-white p-5 shadow-2xl">
+        <div className="text-base font-semibold text-ink">{title}</div>
+        <p className="mt-2 text-sm leading-6 text-muted">{description}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className="inline-flex h-10 items-center justify-center rounded-md border border-line bg-white px-4 text-sm font-medium text-muted hover:bg-panel">キャンセル</button>
+          <button type="button" onClick={onConfirm} className="inline-flex h-10 items-center justify-center rounded-md border border-red-200 bg-red-50 px-4 text-sm font-semibold text-danger hover:bg-red-100">削除する</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function ExecutiveDrilldownModal({
@@ -1474,6 +1505,7 @@ function CompanyModal({
   onClose: () => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [form, setForm] = useState({
     name: company.name,
     industry: company.industry,
@@ -1561,7 +1593,7 @@ function CompanyModal({
             <button onClick={() => setIsEditing((value) => !value)} className="inline-flex h-8 items-center gap-2 rounded-md border border-line px-3 text-xs font-medium text-muted hover:bg-panel">
               {isEditing ? "表示に戻る" : "編集"}
             </button>
-            <button onClick={deleteCompany} className="inline-flex h-8 items-center gap-2 rounded-md border border-red-200 px-3 text-xs font-medium text-danger hover:bg-red-50">
+            <button onClick={() => setIsDeleteConfirmOpen(true)} className="inline-flex h-8 items-center gap-2 rounded-md border border-red-200 px-3 text-xs font-medium text-danger hover:bg-red-50">
               <Trash2 className="size-4" />
               削除
             </button>
@@ -1615,6 +1647,14 @@ function CompanyModal({
           {funnel ? <Card><div className="mb-4 text-sm font-semibold">企業別ワーカーファネル</div><FunnelChart data={getFunnelStages([funnel])} /></Card> : null}
         </div>
       </div>
+      {isDeleteConfirmOpen ? (
+        <ConfirmDialog
+          title="企業を削除しますか？"
+          description={`${company.name} を削除します。この企業に紐づくファネルやアンケートも削除されます。`}
+          onCancel={() => setIsDeleteConfirmOpen(false)}
+          onConfirm={deleteCompany}
+        />
+      ) : null}
     </div>
   );
 }

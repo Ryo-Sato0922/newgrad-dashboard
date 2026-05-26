@@ -1099,8 +1099,8 @@ function CompanyForm({ setData, afterSave, onDone, title = "企業を追加" }: 
         </FormSection>
         <FormSection title="日付・運用">
           <Input label="初回商談日" type="date" value={form.initialMeetingDate} onChange={(initialMeetingDate) => setForm({ ...form, initialMeetingDate })} />
-          <Input label="申込書回収日" type="date" value={form.applicationReceivedDate} onChange={(applicationReceivedDate) => setForm({ ...form, applicationReceivedDate })} />
           <Input label="提案日" type="date" value={form.proposalDate} onChange={(proposalDate) => setForm({ ...form, proposalDate })} />
+          <Input label="申込回収予定日" type="date" value={form.applicationReceivedDate} onChange={(applicationReceivedDate) => setForm({ ...form, applicationReceivedDate })} />
           <Input label="契約予定日" type="date" value={form.contractTargetDate} onChange={(contractTargetDate) => setForm({ ...form, contractTargetDate })} />
           <Input label="契約開始日" type="date" value={form.contractStartDate} onChange={(contractStartDate) => setForm({ ...form, contractStartDate })} />
           <Input label="営業工数" type="number" value={form.salesHours} onChange={(salesHours) => setForm({ ...form, salesHours })} />
@@ -1632,8 +1632,8 @@ function CompanyModal({
                 </FormSection>
                 <FormSection title="日付・運用">
                   <Input label="初回商談日" type="date" value={form.initialMeetingDate} onChange={(initialMeetingDate) => setForm({ ...form, initialMeetingDate })} />
-                  <Input label="申込書回収日" type="date" value={form.applicationReceivedDate} onChange={(applicationReceivedDate) => setForm({ ...form, applicationReceivedDate })} />
                   <Input label="提案日" type="date" value={form.proposalDate} onChange={(proposalDate) => setForm({ ...form, proposalDate })} />
+                  <Input label="申込回収予定日" type="date" value={form.applicationReceivedDate} onChange={(applicationReceivedDate) => setForm({ ...form, applicationReceivedDate })} />
                   <Input label="契約予定日" type="date" value={form.contractTargetDate} onChange={(contractTargetDate) => setForm({ ...form, contractTargetDate })} />
                   <Input label="契約開始日" type="date" value={form.contractStartDate} onChange={(contractStartDate) => setForm({ ...form, contractStartDate })} />
                   <Input label="営業工数" type="number" value={form.salesHours} onChange={(salesHours) => setForm({ ...form, salesHours })} />
@@ -1647,7 +1647,7 @@ function CompanyModal({
           ) : (
             <>
               <div className="grid gap-3 sm:grid-cols-3"><MetricCard label="ARR見込み" value={yen(getArrForecast(company))} /><MetricCard label="契約期間" value={`${company.contractMonths ?? 0}ヶ月`} /><MetricCard label="想定MRR" value={yen(company.expectedMrr)} /><MetricCard label="成功報酬単価" value={yen(company.successFee)} /></div>
-              <div className="grid gap-3 sm:grid-cols-2"><Info label="所在地エリア" value={company.area} /><Info label="FCSTステータス" value={company.status} /><Info label="商談フェーズ" value={`${getClientPhase(company)} ${clientPhaseLabels[getClientPhase(company)]}`} /><Info label="NA予定日" value={company.naScheduledDate ?? "-"} /><Info label="商談メモ" value={company.dealMemo || "-"} /><Info label="初回商談日" value={company.initialMeetingDate ?? "-"} /><Info label="申込書回収日" value={company.applicationReceivedDate ?? "-"} /><Info label="受注リードタイム" value={getLeadTimeDays(company) === null ? "-" : `${num(getLeadTimeDays(company) ?? 0)}日`} /><Info label="提案日" value={company.proposalDate ?? "-"} /><Info label="契約予定日" value={company.contractTargetDate ?? "-"} /><Info label="契約開始日" value={company.contractStartDate ?? "-"} /><Info label="失注理由" value={company.lostReason ?? "-"} /><Info label="メモ" value={company.memo} /></div>
+              <div className="grid gap-3 sm:grid-cols-2"><Info label="所在地エリア" value={company.area} /><Info label="FCSTステータス" value={company.status} /><Info label="商談フェーズ" value={`${getClientPhase(company)} ${clientPhaseLabels[getClientPhase(company)]}`} /><Info label="NA予定日" value={company.naScheduledDate ?? "-"} /><Info label="商談メモ" value={company.dealMemo || "-"} /><Info label="初回商談日" value={company.initialMeetingDate ?? "-"} /><Info label="提案日" value={company.proposalDate ?? "-"} /><Info label="申込回収予定日" value={company.applicationReceivedDate ?? "-"} /><Info label="受注リードタイム" value={getLeadTimeDays(company) === null ? "-" : `${num(getLeadTimeDays(company) ?? 0)}日`} /><Info label="契約予定日" value={company.contractTargetDate ?? "-"} /><Info label="契約開始日" value={company.contractStartDate ?? "-"} /><Info label="失注理由" value={company.lostReason ?? "-"} /><Info label="メモ" value={company.memo} /></div>
             </>
           )}
           {funnel ? <Card><div className="mb-4 text-sm font-semibold">企業別ワーカーファネル</div><FunnelChart data={getFunnelStages([funnel])} /></Card> : null}

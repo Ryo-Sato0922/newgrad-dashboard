@@ -40,6 +40,19 @@ export function hasApplicationCollected(company: Company) {
   return company.clientPhase === "P7";
 }
 
+function getLocalDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function hasRecognizedRevenue(company: Company, asOf = getLocalDateKey()) {
+  return hasApplicationCollected(company)
+    && (!company.applicationReceivedDate || company.applicationReceivedDate <= asOf)
+    && (!company.contractStartDate || company.contractStartDate <= asOf);
+}
+
 export function getLatestFunnels(funnels: Funnel[]) {
   return Object.values(funnels.reduce<Record<string, Funnel>>((acc, funnel) => {
     const current = acc[funnel.companyId];
@@ -50,12 +63,12 @@ export function getLatestFunnels(funnels: Funnel[]) {
   }, {})).sort((a, b) => a.companyId.localeCompare(b.companyId));
 }
 
-export function getExecutiveKpis(data: KpiData = seedData) {
+export function getExecutiveKpis(data: KpiData = seedData, asOf?: string) {
   const { companies, unitEconomics } = data;
   const funnels = getLatestFunnels(data.funnels);
   const proposals = companies.filter((company) => Boolean(company.proposalDate)).length;
   const won = companies.filter((company) => company.status === "受注");
-  const contracted = companies.filter(hasApplicationCollected);
+  const contracted = companies.filter((company) => hasRecognizedRevenue(company, asOf));
   const dealStage = companies.filter((company) => company.status !== "リード").length;
   const mrr = sum(contracted, (company) => company.expectedMrr);
   const successFees = sum(funnels, (funnel) => funnel.joins) * 400000;
@@ -86,12 +99,12 @@ export function getExecutiveKpis(data: KpiData = seedData) {
   };
 }
 
-export function getPipelineTotals(data: KpiData = seedData) {
+export function getPipelineTotals(data: KpiData = seedData, asOf?: string) {
   const { companies } = data;
   const open = companies.filter((company) => !["受注", "失注"].includes(company.status));
   return {
     expectedMrr: sum(open, (company) => company.expectedMrr),
-    contractedMrr: sum(companies.filter(hasApplicationCollected), (company) => company.expectedMrr),
+    contractedMrr: sum(companies.filter((company) => hasRecognizedRevenue(company, asOf)), (company) => company.expectedMrr),
     expectedSuccessFee: sum(open, (company) => company.successFee * company.expectedHires)
   };
 }
@@ -196,9 +209,9 @@ export function getSurveySummary(data: KpiData = seedData) {
   };
 }
 
-export function getLtvCac(data: KpiData = seedData) {
+export function getLtvCac(data: KpiData = seedData, asOf?: string) {
   const { companies } = data;
-  const contracted = companies.filter(hasApplicationCollected);
+  const contracted = companies.filter((company) => hasRecognizedRevenue(company, asOf));
   const avgMrr = sum(contracted, (company) => company.expectedMrr) / Math.max(1, contracted.length);
   const avgSuccessFee = sum(contracted, (company) => company.successFee * company.expectedHires) / Math.max(1, contracted.length);
   const cac = getExecutiveKpis(data).cac;

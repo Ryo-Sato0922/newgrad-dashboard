@@ -25,7 +25,7 @@ import {
   getCompanyOutcomeData,
   getExecutiveKpis,
   getFunnelStages,
-  hasApplicationCollected,
+  hasRecognizedRevenue,
   getIndustryFunnelData,
   getLatestFunnels,
   getLostReasonData,
@@ -293,7 +293,7 @@ function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompa
   const weekly = getWeeklyExecutiveComparison(data);
   const trendData = getExecutiveTrendData(data);
   const wonCompanies = data.companies.filter((company) => company.status === "受注");
-  const contractedCompanies = data.companies.filter(hasApplicationCollected);
+  const contractedCompanies = data.companies.filter((company) => hasRecognizedRevenue(company));
   const averageArpu = Math.round(sum(contractedCompanies, (company) => company.expectedMrr) / Math.max(1, contractedCompanies.length));
   const leadTimeCompanies = wonCompanies.filter((company) => getLeadTimeDays(company) !== null);
   const averageLeadTime = Math.round(sum(leadTimeCompanies, (company) => getLeadTimeDays(company) ?? 0) / Math.max(1, leadTimeCompanies.length));
@@ -321,9 +321,9 @@ function ExecutiveView({ data, onSelectCompany }: { data: KpiData; onSelectCompa
     { label: "受注率", value: pct(kpis.winRate), sub: "受注 / 提案", change: weekly.winRate, formula: `${wonCompanies.length}社 / ${proposalCompanies.length}社`, rows: companyRows(proposalCompanies, (company) => company.status) },
     { label: "提案→受注CVR", value: pct(kpis.winRate), sub: `${kpis.introduced}社 / ${kpis.proposals}社`, change: weekly.winRate, formula: "受注企業数 / 提案済み企業数", rows: companyRows(proposalCompanies, (company) => company.status) },
     { label: "受注リードタイム", value: `${num(averageLeadTime)}日`, sub: `初回商談→申込書回収 / ${leadTimeCompanies.length}社`, change: weekly.leadTime, formula: "受注企業ごとの 申込書回収日 - 初回商談日 の平均", rows: leadTimeCompanies.map((company) => ({ label: company.name, value: `${num(getLeadTimeDays(company) ?? 0)}日`, meta: `${company.initialMeetingDate ?? "-"} → ${company.applicationReceivedDate ?? "-"}`, companyId: company.id })) },
-    { label: "MRR合計", value: yen(kpis.mrr), sub: "P7申込書回収", change: weekly.mrr, formula: "商談フェーズがP7申込書回収の企業の想定MRR合計", rows: companyRows(contractedCompanies, (company) => yen(company.expectedMrr)) },
-    { label: "ARR見込み", value: yen(contractedArrForecast), sub: "P7申込書回収 × 契約期間", change: weekly.arrForecast, formula: "商談フェーズがP7申込書回収の企業ごとの 想定MRR × 契約期間 の合計", rows: companyRows(contractedCompanies, (company) => yen(getArrForecast(company))) },
-    { label: "ARPU", value: yen(averageArpu), sub: `P7 ${contractedCompanies.length}社の平均MRR`, change: weekly.arpu, formula: "P7申込書回収企業のMRR合計 / P7申込書回収企業数", rows: companyRows(contractedCompanies, (company) => yen(company.expectedMrr)) },
+    { label: "MRR合計", value: yen(kpis.mrr), sub: "P7 / 契約開始日以降", change: weekly.mrr, formula: "P7申込書回収、かつ契約開始日が未入力または今日以前の企業の想定MRR合計", rows: companyRows(contractedCompanies, (company) => yen(company.expectedMrr)) },
+    { label: "ARR見込み", value: yen(contractedArrForecast), sub: "P7 / 契約開始日以降", change: weekly.arrForecast, formula: "P7申込書回収、かつ契約開始日が未入力または今日以前の企業ごとの 想定MRR × 契約期間 の合計", rows: companyRows(contractedCompanies, (company) => yen(getArrForecast(company))) },
+    { label: "ARPU", value: yen(averageArpu), sub: `対象${contractedCompanies.length}社の平均MRR`, change: weekly.arpu, formula: "MRR反映対象企業のMRR合計 / MRR反映対象企業数", rows: companyRows(contractedCompanies, (company) => yen(company.expectedMrr)) },
     { label: "成功報酬累計", value: yen(kpis.successFees), sub: "入社数ベース", change: weekly.successFees, formula: "入社予定者数 × 400,000円", rows: latestFunnels.map((funnel) => ({ label: getCompanyName(data, funnel.companyId), value: yen(funnel.joins * 400000), meta: `入社 ${num(funnel.joins)}人`, companyId: data.companies.some((company) => company.id === funnel.companyId) ? funnel.companyId : undefined })) },
     { label: "ワーカー送客数", value: `${num(kpis.referrals)}人`, sub: "応募数", change: weekly.referrals, formula: "企業別応募数の合計", rows: funnelRows((funnel) => funnel.applications, "人") },
     { label: "職場体験実施数", value: `${num(kpis.shifts)}件`, sub: "タイミー勤務", change: weekly.shifts, formula: "企業別タイミー勤務数の合計", rows: funnelRows((funnel) => funnel.shifts, "件") },
@@ -400,7 +400,7 @@ function SalesView({
   const [isAddingCompany, setIsAddingCompany] = useState(false);
   const totals = getPipelineTotals(data);
   const kpis = getExecutiveKpis(data);
-  const arrForecastCompanies = data.companies.filter((company) => hasApplicationCollected(company) && getArrForecast(company) > 0);
+  const arrForecastCompanies = data.companies.filter((company) => hasRecognizedRevenue(company) && getArrForecast(company) > 0);
   const arrForecast = sum(arrForecastCompanies, getArrForecast);
   const weekly = getWeeklySalesComparison(data);
 
@@ -413,10 +413,10 @@ function SalesView({
       />
       <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         <MetricCard label="オープン案件 想定MRR" value={yen(totals.expectedMrr)} sub="失注・受注を除く" change={weekly.expectedMrr} />
-        <MetricCard label="契約済みMRR" value={yen(totals.contractedMrr)} sub="P7申込書回収" tone="good" change={weekly.contractedMrr} />
+        <MetricCard label="契約済みMRR" value={yen(totals.contractedMrr)} sub="P7 / 契約開始日以降" tone="good" change={weekly.contractedMrr} />
         <MetricCard label="想定成功報酬パイプライン" value={yen(totals.expectedSuccessFee)} sub="想定人数 × 単価" change={weekly.expectedSuccessFee} />
-        <MetricCard label="ARR見込み" value={yen(arrForecast)} sub="P7申込書回収 × 契約期間" tone="good" change={weekly.arrForecast} />
-        <MetricCard label="ARR見込み案件数" value={`${num(arrForecastCompanies.length)}件`} sub="P7申込書回収の対象案件" change={weekly.arrForecastCompanies} />
+        <MetricCard label="ARR見込み" value={yen(arrForecast)} sub="P7 / 契約開始日以降" tone="good" change={weekly.arrForecast} />
+        <MetricCard label="ARR見込み案件数" value={`${num(arrForecastCompanies.length)}件`} sub="MRR反映対象案件" change={weekly.arrForecastCompanies} />
         <MetricCard label="提案→受注CVR" value={pct(kpis.winRate)} sub={`${kpis.introduced}社 / ${kpis.proposals}社`} tone="good" change={weekly.winRate} />
       </div>
       {mode === "table" ? <PipelineTable companies={data.companies} onSelect={onSelect} /> : <Kanban companies={data.companies} onSelect={onSelect} />}
@@ -1801,9 +1801,10 @@ function getExecutiveTrendData(data: KpiData) {
   if (months.size === 0) months.add(formatLocalDate(new Date()).slice(0, 7));
 
   return [...months].sort().map((month) => {
-    const monthData = getDataAsOf(data, getMonthEnd(month));
-    const kpis = getExecutiveKpis(monthData);
-    const arrForecastCompanies = monthData.companies.filter((company) => hasApplicationCollected(company) && getArrForecast(company) > 0);
+    const cutoff = getMonthEnd(month);
+    const monthData = getDataAsOf(data, cutoff);
+    const kpis = getExecutiveKpis(monthData, cutoff);
+    const arrForecastCompanies = monthData.companies.filter((company) => hasRecognizedRevenue(company, cutoff) && getArrForecast(company) > 0);
 
     return {
       month,
@@ -1821,13 +1822,14 @@ function getMonthEnd(month: string) {
 }
 
 function getWeeklyExecutiveComparison(data: KpiData): Record<string, MetricChange> {
-  const previousData = getDataAsOf(data, getPreviousMonday());
+  const previousCutoff = getPreviousMonday();
+  const previousData = getDataAsOf(data, previousCutoff);
   const current = getExecutiveKpis(data);
-  const previous = getExecutiveKpis(previousData);
+  const previous = getExecutiveKpis(previousData, previousCutoff);
   const currentWon = data.companies.filter((company) => company.status === "受注");
   const previousWon = previousData.companies.filter((company) => company.status === "受注");
-  const currentContracted = data.companies.filter(hasApplicationCollected);
-  const previousContracted = previousData.companies.filter(hasApplicationCollected);
+  const currentContracted = data.companies.filter((company) => hasRecognizedRevenue(company));
+  const previousContracted = previousData.companies.filter((company) => hasRecognizedRevenue(company, previousCutoff));
   const currentLeadTime = getAverageLeadTime(currentWon);
   const previousLeadTime = getAverageLeadTime(previousWon);
   const currentArpu = Math.round(current.mrr / Math.max(1, currentContracted.length));
@@ -1856,13 +1858,14 @@ function getWeeklyExecutiveComparison(data: KpiData): Record<string, MetricChang
 }
 
 function getWeeklySalesComparison(data: KpiData): Record<string, MetricChange> {
-  const previousData = getDataAsOf(data, getPreviousMonday());
+  const previousCutoff = getPreviousMonday();
+  const previousData = getDataAsOf(data, previousCutoff);
   const currentTotals = getPipelineTotals(data);
-  const previousTotals = getPipelineTotals(previousData);
+  const previousTotals = getPipelineTotals(previousData, previousCutoff);
   const currentKpis = getExecutiveKpis(data);
-  const previousKpis = getExecutiveKpis(previousData);
-  const currentArrCompanies = data.companies.filter((company) => hasApplicationCollected(company) && getArrForecast(company) > 0);
-  const previousArrCompanies = previousData.companies.filter((company) => hasApplicationCollected(company) && getArrForecast(company) > 0);
+  const previousKpis = getExecutiveKpis(previousData, previousCutoff);
+  const currentArrCompanies = data.companies.filter((company) => hasRecognizedRevenue(company) && getArrForecast(company) > 0);
+  const previousArrCompanies = previousData.companies.filter((company) => hasRecognizedRevenue(company, previousCutoff) && getArrForecast(company) > 0);
 
   return {
     expectedMrr: makeMetricChange(currentTotals.expectedMrr, previousTotals.expectedMrr, "円"),

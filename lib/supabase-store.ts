@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { AppData, ClientPhase, Company, Experiment, Funnel, Survey, UnitEconomics } from "./types";
+import { AppData, ClientPhase, Company, Experiment, Funnel, InflowSourceFunnel, Survey, UnitEconomics } from "./types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -42,6 +42,8 @@ type DbFunnel = {
   braze_deliveries: number | null;
   calls: number | null;
   survey_interviews: number | null;
+  overview_recommendations?: number | null;
+  source_funnels?: Partial<Record<string, InflowSourceFunnel>> | null;
   views: number | null;
   applications: number | null;
   shifts: number | null;
@@ -172,6 +174,8 @@ function fromFunnel(row: DbFunnel): Funnel {
     brazeDeliveries: row.braze_deliveries ?? 0,
     calls: row.calls ?? 0,
     surveyInterviews: row.survey_interviews ?? 0,
+    overviewRecommendations: row.overview_recommendations ?? 0,
+    sourceFunnels: row.source_funnels as Funnel["sourceFunnels"] ?? undefined,
     views: row.views ?? 0,
     applications: row.applications ?? 0,
     shifts: row.shifts ?? 0,
@@ -184,8 +188,8 @@ function fromFunnel(row: DbFunnel): Funnel {
   };
 }
 
-function toFunnelRow(funnel: Funnel) {
-  return {
+function toFunnelRow(funnel: Funnel, includeSourceFields = true) {
+  const row = {
     id: funnel.id,
     company_id: funnel.companyId,
     month: funnel.recordedAt,
@@ -202,6 +206,7 @@ function toFunnelRow(funnel: Funnel) {
     joins: funnel.joins,
     previous_month_applications: funnel.previousMonthApplications
   };
+  return includeSourceFields ? { ...row, overview_recommendations: funnel.overviewRecommendations ?? 0, source_funnels: funnel.sourceFunnels ?? {} } : row;
 }
 
 function fromSurvey(row: DbSurvey): Survey {
@@ -347,8 +352,15 @@ export async function upsertAppData(data: AppData) {
   }
 
   if (prepared.funnels.length > 0) {
-    const { error } = await client.from("worker_funnels").upsert(prepared.funnels.map(toFunnelRow));
-    if (error) throw error;
+    const { error } = await client.from("worker_funnels").upsert(prepared.funnels.map((funnel) => toFunnelRow(funnel)));
+    if (error) {
+      if (isMissingFunnelSourceColumn(error)) {
+        const retry = await client.from("worker_funnels").upsert(prepared.funnels.map((funnel) => toFunnelRow(funnel, false)));
+        if (retry.error) throw retry.error;
+      } else {
+        throw error;
+      }
+    }
   }
 
   if (prepared.surveys.length > 0) {
@@ -382,14 +394,28 @@ function isMissingClientPipelineColumn(error: { message?: string; code?: string 
   return error.code === "PGRST204" || ["client_phase", "na_scheduled_date", "deal_memo"].some((column) => message.includes(column));
 }
 
+function isMissingFunnelSourceColumn(error: { message?: string; code?: string }) {
+  const message = error.message ?? "";
+  return error.code === "PGRST204" || ["overview_recommendations", "source_funnels"].some((column) => message.includes(column));
+}
+
 export async function deleteCompanyRecord(id: string) {
   const { error } = await requireSupabase().from("companies").delete().eq("id", id);
   if (error) throw error;
 }
 
 export async function upsertFunnel(funnel: Funnel) {
-  const { error } = await requireSupabase().from("worker_funnels").upsert(toFunnelRow(funnel));
-  if (error) throw error;
+  const client = requireSupabase();
+  const { error } = await client.from("worker_funnels").upsert(toFunnelRow(funnel));
+  if (error) {
+    if (isMissingFunnelSourceColumn(error)) {
+      const retry = await client.from("worker_funnels").upsert(toFunnelRow(funnel, false));
+      if (retry.error) throw retry.error;
+      return { sourceFunnelsPersisted: false };
+    }
+    throw error;
+  }
+  return { sourceFunnelsPersisted: true };
 }
 
 export async function deleteFunnelRecord(id: string) {

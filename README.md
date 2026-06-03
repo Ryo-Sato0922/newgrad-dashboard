@@ -55,6 +55,7 @@ DASHBOARD_PASSWORD=your-secure-password
 - `lib/types.ts`: ドメイン型
 - `supabase/schema.sql`: Supabase/PostgreSQLテーブル定義
 - `supabase/seed.sql`: 初期ダミーデータ
+- `supabase/worker-source-funnel-migration.sql`: Workerの流入元別ファネル追加カラム
 
 ## KPI Logic
 

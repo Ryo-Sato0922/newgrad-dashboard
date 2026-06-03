@@ -40,7 +40,7 @@ import {
   yen
 } from "@/lib/kpis";
 import { deleteCompanyRecord, deleteFunnelRecord, fetchAppData, isSupabaseConfigured, upsertAppData, upsertCompany, upsertFunnel, upsertSurvey, upsertUnitEconomics } from "@/lib/supabase-store";
-import { AppData, ClientPhase, Company, CompanyStatus, Experiment, ExperimentStatus, Funnel, Survey, UnitEconomics } from "@/lib/types";
+import { AppData, ClientPhase, Company, CompanyStatus, Experiment, ExperimentStatus, Funnel, InflowSourceFunnel, InflowSourceKey, Survey, UnitEconomics } from "@/lib/types";
 
 type DrilldownRow = { label: string; value: string; meta?: string; companyId?: string };
 type ExecutiveCard = { label: string; value: string; sub: string; tone?: "neutral" | "good" | "warn" | "bad"; formula: string; rows: DrilldownRow[]; change?: MetricChange };
@@ -84,6 +84,13 @@ const statuses: CompanyStatus[] = ["リード", "初回商談", "提案中", "Po
 const clientPhases: ClientPhase[] = ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "失注"];
 const experimentStatuses: ExperimentStatus[] = ["未実施", "検証中", "成功", "失敗"];
 const areas = ["北海道", "東北", "関東", "中部", "近畿", "中国", "四国", "九州沖縄"];
+const inflowSources = [
+  { key: "brazeDeliveries", label: "Braze配信" },
+  { key: "calls", label: "架電" },
+  { key: "surveyInterviews", label: "アンケート/IV" },
+  { key: "overviewRecommendations", label: "概要推薦" }
+] as const satisfies ReadonlyArray<{ key: InflowSourceKey; label: string }>;
+const funnelStageKeys = ["views", "applications", "shifts", "repeatShifts", "interviewRequests", "screenings", "offers", "joins"] as const;
 
 const clientPhaseLabels: Record<ClientPhase, string> = {
   P0: "アポ予定",
@@ -437,7 +444,7 @@ function PipelineTable({ companies, onSelect }: { companies: Company[]; onSelect
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1260px] text-left text-sm">
           <thead className="border-b border-line bg-yellow-50 text-xs text-muted">
-            <tr>{["企業名", "業界", "エリア", "担当", "FCSTステータス", "商談ステータス", "契約期間", "ARR見込み", "想定MRR", "成功報酬", "採用人数", "提案日", "契約予定日", "操作"].map((head) => <th key={head} className="px-4 py-3 font-semibold">{head}</th>)}</tr>
+            <tr>{["企業名", "業界", "エリア", "担当", "FCSTステータス", "商談ステータス", "契約期間", "ARR見込み", "想定MRR", "成功報酬", "採用人数", "提案日", "契約予定日", "契約開始日", "操作"].map((head) => <th key={head} className="px-4 py-3 font-semibold">{head}</th>)}</tr>
           </thead>
           <tbody>
             {companies.map((company) => (
@@ -455,6 +462,7 @@ function PipelineTable({ companies, onSelect }: { companies: Company[]; onSelect
                 <td className="px-4 py-3">{company.expectedHires}人</td>
                 <td className="px-4 py-3 text-muted">{company.proposalDate ?? "-"}</td>
                 <td className="px-4 py-3 text-muted">{company.contractTargetDate ?? "-"}</td>
+                <td className="px-4 py-3 text-muted">{company.contractStartDate ?? "-"}</td>
                 <td className="px-4 py-3">
                   <button
                     type="button"
@@ -625,7 +633,7 @@ function WorkerView({
   const [editingFunnel, setEditingFunnel] = useState<Funnel | null>(null);
   const [workerDrilldown, setWorkerDrilldown] = useState<ExecutiveCard | null>(null);
   const latestFunnels = getLatestFunnels(data.funnels);
-  const inflowSources = getInflowSourceData(latestFunnels);
+  const inflowData = getInflowSourceData(latestFunnels);
   const workerTotals = getWorkerFunnelTotals(latestFunnels);
   const weekly = getWeeklyWorkerComparison(data);
   const workerRows = (value: (funnel: Funnel) => number, suffix: string): DrilldownRow[] => latestFunnels.map((funnel) => ({
@@ -634,12 +642,8 @@ function WorkerView({
     meta: `${funnel.recordedAt} / 応募 ${num(funnel.applications)}人 / 勤務 ${num(funnel.shifts)}件`,
     companyId: data.companies.some((company) => company.id === funnel.companyId) ? funnel.companyId : undefined
   }));
-  const inflowKeyMap: Record<string, keyof Pick<Funnel, "brazeDeliveries" | "calls" | "surveyInterviews">> = {
-    Braze配信: "brazeDeliveries",
-    架電: "calls",
-    "アンケート/IV": "surveyInterviews"
-  };
-  const inflowCards: ExecutiveCard[] = inflowSources.map((source) => {
+  const inflowKeyMap = Object.fromEntries(inflowSources.map((source) => [source.label, source.key])) as Record<string, InflowSourceKey>;
+  const inflowCards: ExecutiveCard[] = inflowData.map((source) => {
     const key = inflowKeyMap[source.name];
     return {
       label: source.name,
@@ -717,7 +721,7 @@ function WorkerView({
           </button>
         ))}
       </div>
-      <Card><div className="mb-4 text-sm font-semibold">流入ファネル</div><SimpleBarChart data={inflowSources} xKey="name" bars={[{ key: "value", name: "流入数", color: "#f8c900" }, { key: "applications", name: "応募数", color: "#168a5f" }]} /></Card>
+      <Card><div className="mb-4 text-sm font-semibold">流入ファネル</div><SimpleBarChart data={inflowData} xKey="name" bars={[{ key: "value", name: "流入数", color: "#f8c900" }, { key: "applications", name: "応募数", color: "#168a5f" }]} /></Card>
       <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
         <Card><div className="mb-4 text-sm font-semibold">行動ファネル</div><FunnelChart data={getFunnelStages(latestFunnels)} /></Card>
         <Card><div className="mb-4 text-sm font-semibold">企業別比較</div><SimpleBarChart data={companyCompare} xKey="name" bars={[{ key: "応募", name: "応募", color: "#f8c900" }, { key: "面談化率", name: "面談化率", color: "#168a5f" }]} /></Card>
@@ -1095,60 +1099,50 @@ function FunnelForm({
   afterSave: (message: string) => void;
   onDone?: () => void;
 }) {
+  type SourceFunnelForm = Record<InflowSourceKey, Record<"inflow" | typeof funnelStageKeys[number], string>>;
   const [form, setForm] = useState({
     companyId: companies[0]?.id ?? "",
     recordedAt: new Date().toISOString().slice(0, 10),
-    brazeDeliveries: "0",
-    calls: "0",
-    surveyInterviews: "0",
-    views: "0",
-    applications: "0",
-    shifts: "0",
-    repeatShifts: "0",
-    interviewRequests: "0",
-    screenings: "0",
-    offers: "0",
-    joins: "0",
     previousMonthApplications: "0"
   });
+  const [activeSource, setActiveSource] = useState<InflowSourceKey>("brazeDeliveries");
+  const [sourceForm, setSourceForm] = useState<SourceFunnelForm>(() => sourceFunnelsToForm());
 
   useEffect(() => {
     if (!editingFunnel) return;
     setForm({
       companyId: editingFunnel.companyId,
       recordedAt: editingFunnel.recordedAt,
-      brazeDeliveries: String(editingFunnel.brazeDeliveries ?? 0),
-      calls: String(editingFunnel.calls ?? 0),
-      surveyInterviews: String(editingFunnel.surveyInterviews ?? 0),
-      views: String(editingFunnel.views),
-      applications: String(editingFunnel.applications),
-      shifts: String(editingFunnel.shifts),
-      repeatShifts: String(editingFunnel.repeatShifts),
-      interviewRequests: String(editingFunnel.interviewRequests),
-      screenings: String(editingFunnel.screenings),
-      offers: String(editingFunnel.offers),
-      joins: String(editingFunnel.joins),
       previousMonthApplications: String(editingFunnel.previousMonthApplications)
     });
+    setSourceForm(sourceFunnelsToForm(editingFunnel));
   }, [editingFunnel]);
+
+  function updateSourceField(source: InflowSourceKey, key: "inflow" | typeof funnelStageKeys[number], value: string) {
+    setSourceForm((current) => ({ ...current, [source]: { ...current[source], [key]: value } }));
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const sourceFunnels = sourceFormToFunnels(sourceForm);
+    const totals = getSourceFunnelTotals(sourceFunnels);
     const funnel: Funnel = {
       id: editingFunnel?.id ?? crypto.randomUUID(),
       companyId: form.companyId,
       recordedAt: form.recordedAt,
-      brazeDeliveries: toNumber(form.brazeDeliveries),
-      calls: toNumber(form.calls),
-      surveyInterviews: toNumber(form.surveyInterviews),
-      views: toNumber(form.views),
-      applications: toNumber(form.applications),
-      shifts: toNumber(form.shifts),
-      repeatShifts: toNumber(form.repeatShifts),
-      interviewRequests: toNumber(form.interviewRequests),
-      screenings: toNumber(form.screenings),
-      offers: toNumber(form.offers),
-      joins: toNumber(form.joins),
+      brazeDeliveries: sourceFunnels.brazeDeliveries?.inflow ?? 0,
+      calls: sourceFunnels.calls?.inflow ?? 0,
+      surveyInterviews: sourceFunnels.surveyInterviews?.inflow ?? 0,
+      overviewRecommendations: sourceFunnels.overviewRecommendations?.inflow ?? 0,
+      sourceFunnels,
+      views: totals.views,
+      applications: totals.applications,
+      shifts: totals.shifts,
+      repeatShifts: totals.repeatShifts,
+      interviewRequests: totals.interviewRequests,
+      screenings: totals.screenings,
+      offers: totals.offers,
+      joins: totals.joins,
       previousMonthApplications: toNumber(form.previousMonthApplications)
     };
     if (isSupabaseConfigured) {
@@ -1171,17 +1165,44 @@ function FunnelForm({
         <FormSection title="対象">
           <Select label="企業" value={form.companyId} options={companies.map((company) => ({ label: company.name, value: company.id }))} onChange={(companyId) => setForm({ ...form, companyId })} />
           <Input label="記録日" type="date" value={form.recordedAt} onChange={(recordedAt) => setForm({ ...form, recordedAt })} required />
+          <Input label="前月応募" type="number" value={form.previousMonthApplications} onChange={(previousMonthApplications) => setForm({ ...form, previousMonthApplications })} />
         </FormSection>
-        <FormSection title="流入">
-          {(["brazeDeliveries", "calls", "surveyInterviews"] as const).map((key) => (
-            <Input key={key} label={funnelLabels[key]} type="number" value={form[key]} onChange={(value) => setForm({ ...form, [key]: value })} />
-          ))}
-        </FormSection>
-        <FormSection title="行動ファネル">
-          {(["views", "applications", "shifts", "repeatShifts", "interviewRequests", "screenings", "offers", "joins", "previousMonthApplications"] as const).map((key) => (
-            <Input key={key} label={funnelLabels[key]} type="number" value={form[key]} onChange={(value) => setForm({ ...form, [key]: value })} />
-          ))}
-        </FormSection>
+        <div className="rounded-lg border border-line bg-white p-3">
+          <div className="text-sm font-semibold text-ink">流入元別ファネル</div>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {inflowSources.map((source) => {
+              const item = sourceForm[source.key];
+              return (
+                <button
+                  key={source.key}
+                  type="button"
+                  onClick={() => setActiveSource(source.key)}
+                  className={cn("rounded-md border p-3 text-left transition", activeSource === source.key ? "border-yellow-300 bg-yellow-50 shadow-soft" : "border-line bg-panel hover:bg-yellow-50/60")}
+                >
+                  <div className="text-xs font-semibold text-ink">{source.label}</div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted">
+                    <span>流入 {num(toNumber(item.inflow))}</span>
+                    <span>応募 {num(toNumber(item.applications))}</span>
+                    <span>勤務 {num(toNumber(item.shifts))}</span>
+                    <span>内定 {num(toNumber(item.offers))}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-4 rounded-md border border-line bg-white p-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-ink">{inflowSources.find((source) => source.key === activeSource)?.label} の行動ファネル</div>
+              <Pill className="border-yellow-200 bg-yellow-50 text-muted">流入元を切替</Pill>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Input label="流入数" type="number" value={sourceForm[activeSource].inflow} onChange={(value) => updateSourceField(activeSource, "inflow", value)} />
+              {funnelStageKeys.map((key) => (
+                <Input key={key} label={funnelLabels[key]} type="number" value={sourceForm[activeSource][key]} onChange={(value) => updateSourceField(activeSource, key, value)} />
+              ))}
+            </div>
+          </div>
+        </div>
         <div className="flex gap-2 lg:col-span-full">
           <SubmitButton label={editingFunnel ? "変更を保存" : "ファネルを保存"} disabled={companies.length === 0} />
           {editingFunnel ? <button type="button" onClick={() => { setEditingFunnel(null); onDone?.(); }} className="h-10 rounded-md border border-line px-4 text-sm font-medium text-muted hover:bg-panel">キャンセル</button> : null}
@@ -1309,7 +1330,7 @@ function FunnelDeleteList({ companies, funnels, onEdit, onDelete }: { companies:
             <DeleteRow
               key={funnel.id}
               title={`${company?.name ?? "削除済み企業"} / ${funnel.recordedAt}`}
-              meta={`Braze ${num(funnel.brazeDeliveries ?? 0)} / 架電 ${num(funnel.calls ?? 0)} / アンケート・IV ${num(funnel.surveyInterviews ?? 0)} / 応募 ${num(funnel.applications)} / 内定 ${num(funnel.offers)}`}
+              meta={`Braze ${num(funnel.brazeDeliveries ?? 0)} / 架電 ${num(funnel.calls ?? 0)} / アンケート・IV ${num(funnel.surveyInterviews ?? 0)} / 概要推薦 ${num(funnel.overviewRecommendations ?? 0)} / 応募 ${num(funnel.applications)} / 内定 ${num(funnel.offers)}`}
               onEdit={() => onEdit(funnel)}
               onDelete={() => onDelete(funnel.id)}
             />
@@ -1670,6 +1691,7 @@ const funnelLabels = {
   brazeDeliveries: "Braze配信",
   calls: "架電",
   surveyInterviews: "アンケート/IV",
+  overviewRecommendations: "概要推薦",
   views: "閲覧",
   applications: "応募",
   shifts: "タイミー勤務",
@@ -1680,6 +1702,83 @@ const funnelLabels = {
   joins: "入社",
   previousMonthApplications: "前月応募"
 };
+
+function emptySourceFunnel(): InflowSourceFunnel {
+  return { inflow: 0, views: 0, applications: 0, shifts: 0, repeatShifts: 0, interviewRequests: 0, screenings: 0, offers: 0, joins: 0 };
+}
+
+function sourceFunnelsToForm(funnel?: Funnel): Record<InflowSourceKey, Record<"inflow" | typeof funnelStageKeys[number], string>> {
+  const sourceFunnels = getNormalizedSourceFunnels(funnel);
+  return Object.fromEntries(inflowSources.map((source) => {
+    const item = sourceFunnels[source.key] ?? emptySourceFunnel();
+    return [source.key, Object.fromEntries((["inflow", ...funnelStageKeys] as const).map((key) => [key, String(item[key] ?? 0)]))];
+  })) as Record<InflowSourceKey, Record<"inflow" | typeof funnelStageKeys[number], string>>;
+}
+
+function sourceFormToFunnels(sourceForm: Record<InflowSourceKey, Record<"inflow" | typeof funnelStageKeys[number], string>>): Record<InflowSourceKey, InflowSourceFunnel> {
+  return Object.fromEntries(inflowSources.map((source) => {
+    const item = sourceForm[source.key];
+    return [source.key, {
+      inflow: toNumber(item.inflow),
+      views: toNumber(item.views),
+      applications: toNumber(item.applications),
+      shifts: toNumber(item.shifts),
+      repeatShifts: toNumber(item.repeatShifts),
+      interviewRequests: toNumber(item.interviewRequests),
+      screenings: toNumber(item.screenings),
+      offers: toNumber(item.offers),
+      joins: toNumber(item.joins)
+    }];
+  })) as Record<InflowSourceKey, InflowSourceFunnel>;
+}
+
+function getNormalizedSourceFunnels(funnel?: Funnel): Record<InflowSourceKey, InflowSourceFunnel> {
+  if (!funnel) {
+    return Object.fromEntries(inflowSources.map((source) => [source.key, emptySourceFunnel()])) as Record<InflowSourceKey, InflowSourceFunnel>;
+  }
+  const existing = funnel.sourceFunnels;
+  if (existing && inflowSources.some((source) => existing[source.key])) {
+    return Object.fromEntries(inflowSources.map((source) => {
+      const item = existing[source.key] ?? emptySourceFunnel();
+      return [source.key, { ...emptySourceFunnel(), ...item, inflow: item.inflow ?? Number(funnel[source.key] ?? 0) }];
+    })) as Record<InflowSourceKey, InflowSourceFunnel>;
+  }
+
+  const inflowValues = Object.fromEntries(inflowSources.map((source) => [source.key, Number(funnel[source.key] ?? 0)])) as Record<InflowSourceKey, number>;
+  const totalInflow = sum(Object.values(inflowValues), (value) => value);
+  return Object.fromEntries(inflowSources.map((source) => {
+    const share = totalInflow > 0 ? inflowValues[source.key] / totalInflow : source.key === "brazeDeliveries" ? 1 : 0;
+    return [source.key, {
+      inflow: inflowValues[source.key],
+      views: Math.round(funnel.views * share),
+      applications: Math.round(funnel.applications * share),
+      shifts: Math.round(funnel.shifts * share),
+      repeatShifts: Math.round(funnel.repeatShifts * share),
+      interviewRequests: Math.round(funnel.interviewRequests * share),
+      screenings: Math.round(funnel.screenings * share),
+      offers: Math.round(funnel.offers * share),
+      joins: Math.round(funnel.joins * share)
+    }];
+  })) as Record<InflowSourceKey, InflowSourceFunnel>;
+}
+
+function getSourceFunnelTotals(sourceFunnels: Record<InflowSourceKey, InflowSourceFunnel>) {
+  return Object.fromEntries(funnelStageKeys.map((key) => [key, sum(Object.values(sourceFunnels), (source) => source[key])])) as Record<typeof funnelStageKeys[number], number>;
+}
+
+function normalizeFunnel(funnel: Funnel): Funnel {
+  const sourceFunnels = getNormalizedSourceFunnels(funnel);
+  const totals = getSourceFunnelTotals(sourceFunnels);
+  return {
+    ...funnel,
+    brazeDeliveries: sourceFunnels.brazeDeliveries.inflow,
+    calls: sourceFunnels.calls.inflow,
+    surveyInterviews: sourceFunnels.surveyInterviews.inflow,
+    overviewRecommendations: sourceFunnels.overviewRecommendations.inflow,
+    sourceFunnels,
+    ...totals
+  };
+}
 
 const surveyLabels = {
   desireBefore: "志望度Before",
@@ -1785,7 +1884,8 @@ function normalizeAppData(data: AppData): AppData {
       clientPhase: getClientPhase(company),
       initialMeetingDate: company.initialMeetingDate ?? company.proposalDate ?? null,
       applicationReceivedDate: company.applicationReceivedDate ?? company.contractTargetDate ?? null
-    }))
+    })),
+    funnels: data.funnels.map(normalizeFunnel)
   };
 }
 
@@ -1998,19 +2098,18 @@ function getCompanyName(data: KpiData, companyId: string) {
 }
 
 function getInflowSourceData(funnels: Funnel[]) {
-  const applications = sum(funnels, (funnel) => funnel.applications);
-  const sources = [
-    { name: "Braze配信", value: sum(funnels, (funnel) => funnel.brazeDeliveries ?? 0) },
-    { name: "架電", value: sum(funnels, (funnel) => funnel.calls ?? 0) },
-    { name: "アンケート/IV", value: sum(funnels, (funnel) => funnel.surveyInterviews ?? 0) }
-  ];
+  const totalApplications = sum(funnels, (funnel) => funnel.applications);
+  const sources = inflowSources.map((source) => ({
+    name: source.label,
+    value: sum(funnels, (funnel) => funnel[source.key] ?? 0),
+    applications: sum(funnels, (funnel) => getNormalizedSourceFunnels(funnel)[source.key]?.applications ?? 0)
+  }));
   const totalInflow = sum(sources, (source) => source.value);
 
-  return sources.map((source) => ({
-    ...source,
-    applications: totalInflow > 0 ? Math.round(applications * rate(source.value, totalInflow)) : 0,
-    conversionRate: rate(applications, source.value)
-  }));
+  return sources.map((source) => {
+    const applications = source.applications > 0 ? source.applications : totalInflow > 0 ? Math.round(totalApplications * rate(source.value, totalInflow)) : 0;
+    return { ...source, applications, conversionRate: rate(applications, source.value) };
+  });
 }
 
 function toNumber(value: string) {

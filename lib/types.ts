@@ -36,6 +36,8 @@ export type Funnel = {
   brazeDeliveries?: number;
   calls?: number;
   surveyInterviews?: number;
+  overviewRecommendations?: number;
+  sourceFunnels?: Partial<Record<InflowSourceKey, InflowSourceFunnel>>;
   views: number;
   applications: number;
   shifts: number;
@@ -45,6 +47,20 @@ export type Funnel = {
   offers: number;
   joins: number;
   previousMonthApplications: number;
+};
+
+export type InflowSourceKey = "brazeDeliveries" | "calls" | "surveyInterviews" | "overviewRecommendations";
+
+export type InflowSourceFunnel = {
+  inflow: number;
+  views: number;
+  applications: number;
+  shifts: number;
+  repeatShifts: number;
+  interviewRequests: number;
+  screenings: number;
+  offers: number;
+  joins: number;
 };
 
 export type Survey = {

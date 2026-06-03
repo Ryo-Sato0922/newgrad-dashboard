@@ -40,6 +40,8 @@ create table worker_funnels (
   braze_deliveries integer not null default 0,
   calls integer not null default 0,
   survey_interviews integer not null default 0,
+  overview_recommendations integer not null default 0,
+  source_funnels jsonb not null default '{}'::jsonb,
   views integer not null default 0,
   applications integer not null default 0,
   shifts integer not null default 0,
@@ -125,3 +127,6 @@ alter table companies add column if not exists client_phase client_phase not nul
 alter table companies add column if not exists na_scheduled_date date;
 alter table companies add column if not exists deal_memo text not null default '';
 create index if not exists companies_client_phase_idx on companies(client_phase);
+
+alter table worker_funnels add column if not exists overview_recommendations integer not null default 0;
+alter table worker_funnels add column if not exists source_funnels jsonb not null default '{}'::jsonb;

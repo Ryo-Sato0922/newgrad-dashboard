@@ -37,6 +37,13 @@ export const funnels: Funnel[] = [
     brazeDeliveries: 1200,
     calls: 80,
     surveyInterviews: 45,
+    overviewRecommendations: 95,
+    sourceFunnels: {
+      brazeDeliveries: { inflow: 1200, views: 1210, applications: 132, shifts: 74, repeatShifts: 30, interviewRequests: 16, screenings: 12, offers: 4, joins: 2 },
+      calls: { inflow: 80, views: 70, applications: 28, shifts: 18, repeatShifts: 8, interviewRequests: 5, screenings: 4, offers: 2, joins: 1 },
+      surveyInterviews: { inflow: 45, views: 45, applications: 24, shifts: 15, repeatShifts: 7, interviewRequests: 6, screenings: 4, offers: 1, joins: 1 },
+      overviewRecommendations: { inflow: 95, views: 95, applications: 34, shifts: 19, repeatShifts: 9, interviewRequests: 4, screenings: 2, offers: 1, joins: 1 }
+    },
     views: 1420,
     applications: 218,
     shifts: 126,

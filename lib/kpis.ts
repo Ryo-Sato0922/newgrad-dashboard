@@ -36,16 +36,8 @@ export function sum<T>(items: T[], selector: (item: T) => number) {
   return items.reduce((acc, item) => acc + selector(item), 0);
 }
 
-function getLocalDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, "0");
-  const day = `${date.getDate()}`.padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-export function hasContractStarted(company: Company) {
-  const today = getLocalDateKey();
-  return Boolean(company.contractStartDate && company.contractStartDate <= today);
+export function hasApplicationCollected(company: Company) {
+  return company.clientPhase === "P7";
 }
 
 export function getLatestFunnels(funnels: Funnel[]) {
@@ -63,7 +55,7 @@ export function getExecutiveKpis(data: KpiData = seedData) {
   const funnels = getLatestFunnels(data.funnels);
   const proposals = companies.filter((company) => Boolean(company.proposalDate)).length;
   const won = companies.filter((company) => company.status === "受注");
-  const contracted = companies.filter(hasContractStarted);
+  const contracted = companies.filter(hasApplicationCollected);
   const dealStage = companies.filter((company) => company.status !== "リード").length;
   const mrr = sum(contracted, (company) => company.expectedMrr);
   const successFees = sum(funnels, (funnel) => funnel.joins) * 400000;
@@ -99,7 +91,7 @@ export function getPipelineTotals(data: KpiData = seedData) {
   const open = companies.filter((company) => !["受注", "失注"].includes(company.status));
   return {
     expectedMrr: sum(open, (company) => company.expectedMrr),
-    contractedMrr: sum(companies.filter(hasContractStarted), (company) => company.expectedMrr),
+    contractedMrr: sum(companies.filter(hasApplicationCollected), (company) => company.expectedMrr),
     expectedSuccessFee: sum(open, (company) => company.successFee * company.expectedHires)
   };
 }
@@ -206,7 +198,7 @@ export function getSurveySummary(data: KpiData = seedData) {
 
 export function getLtvCac(data: KpiData = seedData) {
   const { companies } = data;
-  const contracted = companies.filter(hasContractStarted);
+  const contracted = companies.filter(hasApplicationCollected);
   const avgMrr = sum(contracted, (company) => company.expectedMrr) / Math.max(1, contracted.length);
   const avgSuccessFee = sum(contracted, (company) => company.successFee * company.expectedHires) / Math.max(1, contracted.length);
   const cac = getExecutiveKpis(data).cac;

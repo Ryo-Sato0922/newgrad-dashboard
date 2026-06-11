@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { AppData, ClientPhase, Company, Experiment, Funnel, InflowSourceFunnel, Survey, UnitEconomics } from "./types";
+import { AppData, ClientPhase, Company, Experiment, ForecastRating, Funnel, InflowSourceFunnel, Survey, UnitEconomics } from "./types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -17,6 +17,7 @@ type DbCompany = {
   email: string | null;
   status: Company["status"];
   client_phase?: ClientPhase | null;
+  forecast_rating?: ForecastRating | null;
   na_scheduled_date?: string | null;
   deal_memo?: string | null;
   expected_mrr: number;
@@ -120,6 +121,7 @@ function fromCompany(row: DbCompany): Company {
     email: row.email ?? "",
     status: row.status,
     clientPhase: row.client_phase ?? "P0",
+    forecastRating: row.forecast_rating ?? "★",
     naScheduledDate: dateToInput(row.na_scheduled_date ?? null),
     dealMemo: row.deal_memo ?? "",
     expectedMrr: row.expected_mrr,
@@ -163,7 +165,7 @@ function toCompanyRow(company: Company, includeClientPipelineFields = true) {
     cs_hours: company.csHours,
     acquisition_cost: company.acquisitionCost
   };
-  return includeClientPipelineFields ? { ...row, client_phase: company.clientPhase ?? "P0", na_scheduled_date: company.naScheduledDate ?? null, deal_memo: company.dealMemo ?? "" } : row;
+  return includeClientPipelineFields ? { ...row, client_phase: company.clientPhase ?? "P0", forecast_rating: company.forecastRating ?? "★", na_scheduled_date: company.naScheduledDate ?? null, deal_memo: company.dealMemo ?? "" } : row;
 }
 
 function fromFunnel(row: DbFunnel): Funnel {
@@ -391,7 +393,7 @@ export async function upsertCompany(company: Company) {
 
 function isMissingClientPipelineColumn(error: { message?: string; code?: string }) {
   const message = error.message ?? "";
-  return error.code === "PGRST204" || ["client_phase", "na_scheduled_date", "deal_memo"].some((column) => message.includes(column));
+  return error.code === "PGRST204" || ["client_phase", "forecast_rating", "na_scheduled_date", "deal_memo"].some((column) => message.includes(column));
 }
 
 function isMissingFunnelSourceColumn(error: { message?: string; code?: string }) {

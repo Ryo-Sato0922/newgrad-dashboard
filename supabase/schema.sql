@@ -13,6 +13,7 @@ create table companies (
   email text not null,
   status company_status not null default 'リード',
   client_phase client_phase not null default 'P0',
+  forecast_rating text not null default '★' check (forecast_rating in ('★★★', '★★', '★')),
   na_scheduled_date date,
   deal_memo text not null default '',
   expected_mrr integer not null default 0,
@@ -124,6 +125,7 @@ end $$;
 alter type client_phase add value if not exists '失注';
 
 alter table companies add column if not exists client_phase client_phase not null default 'P0';
+alter table companies add column if not exists forecast_rating text not null default '★' check (forecast_rating in ('★★★', '★★', '★'));
 alter table companies add column if not exists na_scheduled_date date;
 alter table companies add column if not exists deal_memo text not null default '';
 create index if not exists companies_client_phase_idx on companies(client_phase);

@@ -82,7 +82,7 @@ const nav = [
 
 const statuses: CompanyStatus[] = ["リード", "初回商談", "提案中", "PoC", "契約交渉", "受注", "失注"];
 const clientPhases: ClientPhase[] = ["P0", "P1", "P2", "P3", "P4", "P5", "P6", "P7", "失注"];
-const forecastRatings: ForecastRating[] = ["★★★", "★★", "★"];
+const forecastRatings: ForecastRating[] = ["-", "★★★", "★★", "★"];
 const experimentStatuses: ExperimentStatus[] = ["未実施", "検証中", "成功", "失敗"];
 const areas = ["北海道", "東北", "関東", "中部", "近畿", "中国", "四国", "九州沖縄"];
 const inflowSources = [
@@ -130,7 +130,8 @@ const phaseStyle: Record<ClientPhase, string> = {
 const forecastStyle: Record<ForecastRating, string> = {
   "★★★": "border-green-200 bg-green-50 text-green-700",
   "★★": "border-yellow-200 bg-yellow-50 text-yellow-800",
-  "★": "border-stone-200 bg-stone-50 text-stone-700"
+  "★": "border-stone-200 bg-stone-50 text-stone-700",
+  "-": "border-stone-200 bg-white text-muted"
 };
 
 export default function Home() {
@@ -1012,7 +1013,7 @@ function DataEntryView({ data, setData, setSavedMessage }: { data: AppData; setD
 
 function CompanyForm({ setData, afterSave, onDone, title = "企業を追加" }: { setData: React.Dispatch<React.SetStateAction<AppData>>; afterSave: (message: string) => void; onDone?: () => void; title?: string }) {
   const [form, setForm] = useState({
-    name: "", industry: "", area: "関東", owner: "", status: "リード" as CompanyStatus, clientPhase: "P0" as ClientPhase, forecastRating: "★" as ForecastRating, expectedMrr: "200000", contractMonths: "12", successFee: "400000", expectedHires: "3",
+    name: "", industry: "", area: "関東", owner: "", status: "リード" as CompanyStatus, clientPhase: "P0" as ClientPhase, forecastRating: "-" as ForecastRating, expectedMrr: "200000", contractMonths: "12", successFee: "400000", expectedHires: "3",
     naScheduledDate: "", dealMemo: "", initialMeetingDate: "", applicationReceivedDate: "", proposalDate: "", contractTargetDate: "", contractStartDate: "", lostReason: "", memo: "", salesHours: "0", csHours: "0"
   });
 
@@ -1891,7 +1892,7 @@ function getClientPhase(company: Company): ClientPhase {
 }
 
 function getForecastRating(company: Company): ForecastRating {
-  return company.forecastRating ?? "★";
+  return company.forecastRating ?? "-";
 }
 
 function formatClientPhaseOption(phase: ClientPhase) {

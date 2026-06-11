@@ -121,7 +121,7 @@ function fromCompany(row: DbCompany): Company {
     email: row.email ?? "",
     status: row.status,
     clientPhase: row.client_phase ?? "P0",
-    forecastRating: row.forecast_rating ?? "★",
+    forecastRating: row.forecast_rating ?? "-",
     naScheduledDate: dateToInput(row.na_scheduled_date ?? null),
     dealMemo: row.deal_memo ?? "",
     expectedMrr: row.expected_mrr,
@@ -165,7 +165,7 @@ function toCompanyRow(company: Company, includeClientPipelineFields = true) {
     cs_hours: company.csHours,
     acquisition_cost: company.acquisitionCost
   };
-  return includeClientPipelineFields ? { ...row, client_phase: company.clientPhase ?? "P0", forecast_rating: company.forecastRating ?? "★", na_scheduled_date: company.naScheduledDate ?? null, deal_memo: company.dealMemo ?? "" } : row;
+  return includeClientPipelineFields ? { ...row, client_phase: company.clientPhase ?? "P0", forecast_rating: company.forecastRating ?? "-", na_scheduled_date: company.naScheduledDate ?? null, deal_memo: company.dealMemo ?? "" } : row;
 }
 
 function fromFunnel(row: DbFunnel): Funnel {

@@ -1047,15 +1047,19 @@ function CompanyForm({ setData, afterSave, onDone, title = "企業を追加" }: 
       acquisitionCost: 0
     };
     let clientPipelinePersisted = true;
+    let forecastRatingPersisted = true;
     if (isSupabaseConfigured) {
       const result = await upsertCompany(company);
       if (result?.clientPipelinePersisted === false) {
         clientPipelinePersisted = false;
       }
+      if (result?.forecastRatingPersisted === false) {
+        forecastRatingPersisted = false;
+      }
     }
     setData((current) => ({ ...current, companies: [company, ...current.companies] }));
     setForm({ ...form, name: "", owner: "", memo: "", dealMemo: "", lostReason: "" });
-    afterSave(clientPipelinePersisted ? "企業を追加しました" : "企業を追加しました。DBにClientカラムを追加してください");
+    afterSave(getCompanySaveMessage("企業を追加しました", clientPipelinePersisted, forecastRatingPersisted));
     onDone?.();
   }
 
@@ -1604,16 +1608,20 @@ function CompanyModal({
       csHours: toNumber(form.csHours)
     };
     let clientPipelinePersisted = true;
+    let forecastRatingPersisted = true;
     if (isSupabaseConfigured) {
       const result = await upsertCompany(updated);
       if (result?.clientPipelinePersisted === false) {
         clientPipelinePersisted = false;
       }
+      if (result?.forecastRatingPersisted === false) {
+        forecastRatingPersisted = false;
+      }
     }
     setData((current) => ({ ...current, companies: current.companies.map((item) => (item.id === updated.id ? updated : item)) }));
     onCompanyChange(updated);
     setIsEditing(false);
-    afterSave(clientPipelinePersisted ? "企業データを更新しました" : "企業データを更新しました。DBにClientカラムを追加してください");
+    afterSave(getCompanySaveMessage("企業データを更新しました", clientPipelinePersisted, forecastRatingPersisted));
   }
 
   async function deleteCompany() {
@@ -1893,6 +1901,12 @@ function getClientPhase(company: Company): ClientPhase {
 
 function getForecastRating(company: Company): ForecastRating {
   return company.forecastRating ?? "-";
+}
+
+function getCompanySaveMessage(base: string, clientPipelinePersisted: boolean, forecastRatingPersisted: boolean) {
+  if (!clientPipelinePersisted) return `${base}。DBにClientカラムを追加してください`;
+  if (!forecastRatingPersisted) return `${base}。DBに受注ヨミカラムを追加してください`;
+  return base;
 }
 
 function formatClientPhaseOption(phase: ClientPhase) {

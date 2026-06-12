@@ -141,7 +141,9 @@ function fromCompany(row: DbCompany): Company {
   };
 }
 
-function toCompanyRow(company: Company, includeClientPipelineFields = true) {
+type CompanyOptionalColumn = "client_phase" | "forecast_rating" | "na_scheduled_date" | "deal_memo";
+
+function toCompanyRow(company: Company, omittedColumns: CompanyOptionalColumn[] = []) {
   const row = {
     id: company.id,
     name: company.name,
@@ -165,7 +167,13 @@ function toCompanyRow(company: Company, includeClientPipelineFields = true) {
     cs_hours: company.csHours,
     acquisition_cost: company.acquisitionCost
   };
-  return includeClientPipelineFields ? { ...row, client_phase: company.clientPhase ?? "P0", forecast_rating: company.forecastRating ?? "-", na_scheduled_date: company.naScheduledDate ?? null, deal_memo: company.dealMemo ?? "" } : row;
+  return {
+    ...row,
+    ...(!omittedColumns.includes("client_phase") ? { client_phase: company.clientPhase ?? "P0" } : {}),
+    ...(!omittedColumns.includes("forecast_rating") ? { forecast_rating: company.forecastRating ?? "-" } : {}),
+    ...(!omittedColumns.includes("na_scheduled_date") ? { na_scheduled_date: company.naScheduledDate ?? null } : {}),
+    ...(!omittedColumns.includes("deal_memo") ? { deal_memo: company.dealMemo ?? "" } : {})
+  };
 }
 
 function fromFunnel(row: DbFunnel): Funnel {
@@ -337,15 +345,7 @@ export async function upsertAppData(data: AppData) {
   const prepared = prepareAppDataForSupabase(data);
 
   if (prepared.companies.length > 0) {
-    const { error } = await client.from("companies").upsert(prepared.companies.map((company) => toCompanyRow(company)));
-    if (error) {
-      if (isMissingClientPipelineColumn(error)) {
-        const retry = await client.from("companies").upsert(prepared.companies.map((company) => toCompanyRow(company, false)));
-        if (retry.error) throw retry.error;
-      } else {
-        throw error;
-      }
-    }
+    await upsertCompaniesWithColumnFallback(client, prepared.companies);
   }
 
   if (prepared.unitEconomics.length > 0) {
@@ -379,21 +379,34 @@ function isUuid(value: string) {
 
 export async function upsertCompany(company: Company) {
   const client = requireSupabase();
-  const { error } = await client.from("companies").upsert(toCompanyRow(company));
-  if (error) {
-    if (isMissingClientPipelineColumn(error)) {
-      const retry = await client.from("companies").upsert(toCompanyRow(company, false));
-      if (retry.error) throw retry.error;
-      return { clientPipelinePersisted: false };
-    }
-    throw error;
-  }
-  return { clientPipelinePersisted: true };
+  const omittedColumns = await upsertCompaniesWithColumnFallback(client, [company]);
+  return {
+    clientPipelinePersisted: !["client_phase", "na_scheduled_date", "deal_memo"].some((column) => omittedColumns.includes(column as CompanyOptionalColumn)),
+    forecastRatingPersisted: !omittedColumns.includes("forecast_rating")
+  };
 }
 
-function isMissingClientPipelineColumn(error: { message?: string; code?: string }) {
+async function upsertCompaniesWithColumnFallback(client: ReturnType<typeof requireSupabase>, companies: Company[]) {
+  const omittedColumns: CompanyOptionalColumn[] = [];
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const { error } = await client.from("companies").upsert(companies.map((company) => toCompanyRow(company, omittedColumns)));
+    if (!error) return omittedColumns;
+
+    const missingColumn = getMissingCompanyOptionalColumn(error);
+    if (!missingColumn || omittedColumns.includes(missingColumn)) {
+      throw error;
+    }
+    omittedColumns.push(missingColumn);
+  }
+
+  return omittedColumns;
+}
+
+function getMissingCompanyOptionalColumn(error: { message?: string; code?: string }): CompanyOptionalColumn | null {
   const message = error.message ?? "";
-  return error.code === "PGRST204" || ["client_phase", "forecast_rating", "na_scheduled_date", "deal_memo"].some((column) => message.includes(column));
+  const columns: CompanyOptionalColumn[] = ["client_phase", "forecast_rating", "na_scheduled_date", "deal_memo"];
+  return columns.find((column) => message.includes(column)) ?? (error.code === "PGRST204" ? "forecast_rating" : null);
 }
 
 function isMissingFunnelSourceColumn(error: { message?: string; code?: string }) {

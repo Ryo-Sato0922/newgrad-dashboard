@@ -111,7 +111,27 @@ function toNumber(value: number | string | null | undefined) {
   return Number(value ?? 0);
 }
 
+const forecastRatingMarkerPattern = /(?:\n\n)?<!-- forecast_rating:(★★★|★★|★|-) -->\s*$/;
+
+function getForecastRatingFromDealMemo(value: string | null | undefined): ForecastRating | null {
+  const match = (value ?? "").match(forecastRatingMarkerPattern);
+  return match ? (match[1] as ForecastRating) : null;
+}
+
+function stripForecastRatingMarker(value: string | null | undefined) {
+  return (value ?? "").replace(forecastRatingMarkerPattern, "");
+}
+
+function encodeForecastRatingInDealMemo(value: string | null | undefined, rating: ForecastRating | undefined) {
+  const cleanValue = stripForecastRatingMarker(value);
+  const separator = cleanValue ? "\n\n" : "";
+  return `${cleanValue}${separator}<!-- forecast_rating:${rating ?? "-"} -->`;
+}
+
 function fromCompany(row: DbCompany): Company {
+  const dealMemo = row.deal_memo ?? "";
+  const memoForecastRating = getForecastRatingFromDealMemo(dealMemo);
+  const dbForecastRating = row.forecast_rating ?? null;
   return {
     id: row.id,
     name: row.name,
@@ -121,9 +141,9 @@ function fromCompany(row: DbCompany): Company {
     email: row.email ?? "",
     status: row.status,
     clientPhase: row.client_phase ?? "P0",
-    forecastRating: row.forecast_rating ?? "-",
+    forecastRating: dbForecastRating && dbForecastRating !== "-" ? dbForecastRating : memoForecastRating ?? dbForecastRating ?? "-",
     naScheduledDate: dateToInput(row.na_scheduled_date ?? null),
-    dealMemo: row.deal_memo ?? "",
+    dealMemo: stripForecastRatingMarker(dealMemo),
     expectedMrr: row.expected_mrr,
     contractMonths: row.contract_months ?? 0,
     successFee: row.success_fee,
@@ -141,7 +161,7 @@ function fromCompany(row: DbCompany): Company {
   };
 }
 
-type CompanyOptionalColumn = "client_phase" | "na_scheduled_date" | "deal_memo";
+type CompanyOptionalColumn = "client_phase" | "forecast_rating" | "na_scheduled_date" | "deal_memo";
 
 function toCompanyRow(company: Company, omittedColumns: CompanyOptionalColumn[] = []) {
   const row = {
@@ -170,9 +190,11 @@ function toCompanyRow(company: Company, omittedColumns: CompanyOptionalColumn[] 
   return {
     ...row,
     ...(!omittedColumns.includes("client_phase") ? { client_phase: company.clientPhase ?? "P0" } : {}),
-    forecast_rating: company.forecastRating ?? "-",
+    ...(!omittedColumns.includes("forecast_rating") ? { forecast_rating: company.forecastRating ?? "-" } : {}),
     ...(!omittedColumns.includes("na_scheduled_date") ? { na_scheduled_date: company.naScheduledDate ?? null } : {}),
-    ...(!omittedColumns.includes("deal_memo") ? { deal_memo: company.dealMemo ?? "" } : {})
+    ...(!omittedColumns.includes("deal_memo")
+      ? { deal_memo: omittedColumns.includes("forecast_rating") ? encodeForecastRatingInDealMemo(company.dealMemo, company.forecastRating) : stripForecastRatingMarker(company.dealMemo) }
+      : {})
   };
 }
 
@@ -381,7 +403,8 @@ export async function upsertCompany(company: Company) {
   const client = requireSupabase();
   const omittedColumns = await upsertCompaniesWithColumnFallback(client, [company]);
   return {
-    clientPipelinePersisted: !["client_phase", "na_scheduled_date", "deal_memo"].some((column) => omittedColumns.includes(column as CompanyOptionalColumn))
+    clientPipelinePersisted: !["client_phase", "na_scheduled_date", "deal_memo"].some((column) => omittedColumns.includes(column as CompanyOptionalColumn)),
+    forecastRatingPersisted: !omittedColumns.includes("forecast_rating") || !omittedColumns.includes("deal_memo")
   };
 }
 
@@ -404,6 +427,7 @@ async function upsertCompaniesWithColumnFallback(client: ReturnType<typeof requi
 
 function getMissingCompanyOptionalColumn(error: { message?: string; code?: string }): CompanyOptionalColumn | null {
   const message = error.message ?? "";
+  if (message.includes("forecast_rating") || message.includes("companies_forecast_rating_check")) return "forecast_rating";
   const columns: CompanyOptionalColumn[] = ["client_phase", "na_scheduled_date", "deal_memo"];
   return columns.find((column) => message.includes(column)) ?? null;
 }

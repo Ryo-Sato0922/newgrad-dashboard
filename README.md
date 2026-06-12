@@ -93,6 +93,7 @@ erDiagram
     text email
     company_status status
     client_phase client_phase
+    text forecast_rating
     date na_scheduled_date
     text deal_memo
     integer expected_mrr
@@ -208,6 +209,12 @@ Clientページを追加する既存DBでは、以下をSupabase SQL editorで�
 
 ```sql
 -- supabase/client-phase-migration.sql
+```
+
+受注ヨミを追加する既存DBでは、以下をSupabase SQL editorで実行してください。過去に古いCHECK制約が入っている場合も、このSQLで現在の仕様（`★★★` / `★★` / `★` / `-`）に揃えます。
+
+```sql
+-- supabase/forecast-rating-migration.sql
 ```
 
 ## Data Entry

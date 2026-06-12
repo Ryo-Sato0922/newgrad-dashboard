@@ -1053,8 +1053,8 @@ function CompanyForm({ setData, afterSave, onDone, title = "企業を追加" }: 
         if (result?.clientPipelinePersisted === false) {
           clientPipelinePersisted = false;
         }
-      } catch {
-        afterSave("企業の保存に失敗しました。DBに受注ヨミカラムを追加してください");
+      } catch (error) {
+        afterSave(getCompanyDbSaveErrorMessage(error, "企業の保存に失敗しました"));
         return;
       }
     }
@@ -1615,8 +1615,8 @@ function CompanyModal({
         if (result?.clientPipelinePersisted === false) {
           clientPipelinePersisted = false;
         }
-      } catch {
-        afterSave("企業データの保存に失敗しました。DBに受注ヨミカラムを追加してください");
+      } catch (error) {
+        afterSave(getCompanyDbSaveErrorMessage(error, "企業データの保存に失敗しました"));
         return;
       }
     }
@@ -1908,6 +1908,14 @@ function getForecastRating(company: Company): ForecastRating {
 function getCompanySaveMessage(base: string, clientPipelinePersisted: boolean) {
   if (!clientPipelinePersisted) return `${base}。DBにClientカラムを追加してください`;
   return base;
+}
+
+function getCompanyDbSaveErrorMessage(error: unknown, base: string) {
+  const message = error instanceof Error ? error.message : typeof error === "object" && error && "message" in error ? String(error.message) : "";
+  if (["forecast_rating", "companies_forecast_rating_check"].some((keyword) => message.includes(keyword))) {
+    return `${base}。DBの受注ヨミ設定を更新してください`;
+  }
+  return `${base}。DB保存設定を確認してください`;
 }
 
 function formatClientPhaseOption(phase: ClientPhase) {

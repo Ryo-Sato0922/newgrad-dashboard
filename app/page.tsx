@@ -1047,19 +1047,20 @@ function CompanyForm({ setData, afterSave, onDone, title = "企業を追加" }: 
       acquisitionCost: 0
     };
     let clientPipelinePersisted = true;
-    let forecastRatingPersisted = true;
     if (isSupabaseConfigured) {
-      const result = await upsertCompany(company);
-      if (result?.clientPipelinePersisted === false) {
-        clientPipelinePersisted = false;
-      }
-      if (result?.forecastRatingPersisted === false) {
-        forecastRatingPersisted = false;
+      try {
+        const result = await upsertCompany(company);
+        if (result?.clientPipelinePersisted === false) {
+          clientPipelinePersisted = false;
+        }
+      } catch {
+        afterSave("企業の保存に失敗しました。DBに受注ヨミカラムを追加してください");
+        return;
       }
     }
     setData((current) => ({ ...current, companies: [company, ...current.companies] }));
     setForm({ ...form, name: "", owner: "", memo: "", dealMemo: "", lostReason: "" });
-    afterSave(getCompanySaveMessage("企業を追加しました", clientPipelinePersisted, forecastRatingPersisted));
+    afterSave(getCompanySaveMessage("企業を追加しました", clientPipelinePersisted));
     onDone?.();
   }
 
@@ -1608,20 +1609,21 @@ function CompanyModal({
       csHours: toNumber(form.csHours)
     };
     let clientPipelinePersisted = true;
-    let forecastRatingPersisted = true;
     if (isSupabaseConfigured) {
-      const result = await upsertCompany(updated);
-      if (result?.clientPipelinePersisted === false) {
-        clientPipelinePersisted = false;
-      }
-      if (result?.forecastRatingPersisted === false) {
-        forecastRatingPersisted = false;
+      try {
+        const result = await upsertCompany(updated);
+        if (result?.clientPipelinePersisted === false) {
+          clientPipelinePersisted = false;
+        }
+      } catch {
+        afterSave("企業データの保存に失敗しました。DBに受注ヨミカラムを追加してください");
+        return;
       }
     }
     setData((current) => ({ ...current, companies: current.companies.map((item) => (item.id === updated.id ? updated : item)) }));
     onCompanyChange(updated);
     setIsEditing(false);
-    afterSave(getCompanySaveMessage("企業データを更新しました", clientPipelinePersisted, forecastRatingPersisted));
+    afterSave(getCompanySaveMessage("企業データを更新しました", clientPipelinePersisted));
   }
 
   async function deleteCompany() {
@@ -1903,9 +1905,8 @@ function getForecastRating(company: Company): ForecastRating {
   return company.forecastRating ?? "-";
 }
 
-function getCompanySaveMessage(base: string, clientPipelinePersisted: boolean, forecastRatingPersisted: boolean) {
+function getCompanySaveMessage(base: string, clientPipelinePersisted: boolean) {
   if (!clientPipelinePersisted) return `${base}。DBにClientカラムを追加してください`;
-  if (!forecastRatingPersisted) return `${base}。DBに受注ヨミカラムを追加してください`;
   return base;
 }
 

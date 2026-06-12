@@ -141,7 +141,7 @@ function fromCompany(row: DbCompany): Company {
   };
 }
 
-type CompanyOptionalColumn = "client_phase" | "forecast_rating" | "na_scheduled_date" | "deal_memo";
+type CompanyOptionalColumn = "client_phase" | "na_scheduled_date" | "deal_memo";
 
 function toCompanyRow(company: Company, omittedColumns: CompanyOptionalColumn[] = []) {
   const row = {
@@ -170,7 +170,7 @@ function toCompanyRow(company: Company, omittedColumns: CompanyOptionalColumn[] 
   return {
     ...row,
     ...(!omittedColumns.includes("client_phase") ? { client_phase: company.clientPhase ?? "P0" } : {}),
-    ...(!omittedColumns.includes("forecast_rating") ? { forecast_rating: company.forecastRating ?? "-" } : {}),
+    forecast_rating: company.forecastRating ?? "-",
     ...(!omittedColumns.includes("na_scheduled_date") ? { na_scheduled_date: company.naScheduledDate ?? null } : {}),
     ...(!omittedColumns.includes("deal_memo") ? { deal_memo: company.dealMemo ?? "" } : {})
   };
@@ -381,8 +381,7 @@ export async function upsertCompany(company: Company) {
   const client = requireSupabase();
   const omittedColumns = await upsertCompaniesWithColumnFallback(client, [company]);
   return {
-    clientPipelinePersisted: !["client_phase", "na_scheduled_date", "deal_memo"].some((column) => omittedColumns.includes(column as CompanyOptionalColumn)),
-    forecastRatingPersisted: !omittedColumns.includes("forecast_rating")
+    clientPipelinePersisted: !["client_phase", "na_scheduled_date", "deal_memo"].some((column) => omittedColumns.includes(column as CompanyOptionalColumn))
   };
 }
 
@@ -405,8 +404,8 @@ async function upsertCompaniesWithColumnFallback(client: ReturnType<typeof requi
 
 function getMissingCompanyOptionalColumn(error: { message?: string; code?: string }): CompanyOptionalColumn | null {
   const message = error.message ?? "";
-  const columns: CompanyOptionalColumn[] = ["client_phase", "forecast_rating", "na_scheduled_date", "deal_memo"];
-  return columns.find((column) => message.includes(column)) ?? (error.code === "PGRST204" ? "forecast_rating" : null);
+  const columns: CompanyOptionalColumn[] = ["client_phase", "na_scheduled_date", "deal_memo"];
+  return columns.find((column) => message.includes(column)) ?? null;
 }
 
 function isMissingFunnelSourceColumn(error: { message?: string; code?: string }) {

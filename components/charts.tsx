@@ -139,16 +139,16 @@ export function GrossProfitChart({ data }: { data: Array<Record<string, string |
 export function BusinessPlanMonthlyChart({ data }: { data: Array<Record<string, string | number>> }) {
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <ComposedChart data={data} margin={{ top: 10, right: 8, bottom: 0, left: -14 }}>
+      <ComposedChart data={data} margin={{ top: 10, right: 8, bottom: 0, left: -14 }} barGap={8} barCategoryGap="26%">
         <CartesianGrid stroke={grid} vertical={false} />
         <XAxis dataKey="month" tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} />
         <Tooltip contentStyle={tooltipStyle} />
         <Legend />
-        <Bar dataKey="actualCompanies" name="実績" fill={green} radius={[4, 4, 0, 0]} />
-        <Bar dataKey="pipelineStar3" name="★★★" stackId="pipeline" fill="#0f7a55" radius={[4, 4, 0, 0]} />
-        <Bar dataKey="pipelineStar2" name="★★" stackId="pipeline" fill={yellow} radius={[4, 4, 0, 0]} />
-        <Bar dataKey="pipelineStar1" name="★" stackId="pipeline" fill={amber} radius={[4, 4, 0, 0]} />
+        <Bar dataKey="actualCompanies" name="実績" fill={green} radius={[4, 4, 0, 0]} maxBarSize={34} />
+        <Bar dataKey="pipelineStar3" name="ヨミ ★★★" stackId="pipeline" fill="#0f7a55" radius={[0, 0, 0, 0]} maxBarSize={34} />
+        <Bar dataKey="pipelineStar2" name="ヨミ ★★" stackId="pipeline" fill={yellow} radius={[0, 0, 0, 0]} maxBarSize={34} />
+        <Bar dataKey="pipelineStar1" name="ヨミ ★" stackId="pipeline" fill={amber} radius={[4, 4, 0, 0]} maxBarSize={34} />
         <Line type="monotone" dataKey="targetCompanies" name="計画" stroke={black} strokeWidth={2.5} dot={{ r: 3, fill: black }} />
       </ComposedChart>
     </ResponsiveContainer>

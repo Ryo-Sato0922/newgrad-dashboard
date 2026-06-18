@@ -99,6 +99,8 @@ type DbExperiment = {
   next_action: string | null;
 };
 
+const businessPlanExperimentPrefix = "__business_plan__:";
+
 function requireSupabase() {
   if (!supabase) {
     throw new Error("Supabase環境変数が設定されていません");
@@ -324,6 +326,32 @@ function toBusinessPlanRow(plan: BusinessPlan) {
   };
 }
 
+function isBusinessPlanExperiment(row: Pick<DbExperiment, "hypothesis">) {
+  return row.hypothesis.startsWith(businessPlanExperimentPrefix);
+}
+
+function fromBusinessPlanExperiment(row: DbExperiment): BusinessPlan {
+  return {
+    id: row.id,
+    month: row.hypothesis.replace(businessPlanExperimentPrefix, "").slice(0, 7),
+    targetCompanies: Number(row.result ?? 0),
+    memo: row.detail ?? ""
+  };
+}
+
+function toBusinessPlanExperimentRow(plan: BusinessPlan) {
+  return {
+    id: plan.id,
+    hypothesis: `${businessPlanExperimentPrefix}${plan.month}`,
+    detail: plan.memo,
+    period: null,
+    status: "未実施" as const,
+    result: String(plan.targetCompanies),
+    learning: "",
+    next_action: ""
+  };
+}
+
 function fromExperiment(row: DbExperiment): Experiment {
   return {
     id: row.id,
@@ -351,14 +379,17 @@ export async function fetchAppData(): Promise<AppData> {
   const businessPlanError = businessPlans.error && !isMissingBusinessPlansTable(businessPlans.error) ? businessPlans.error : null;
   const error = companies.error ?? funnels.error ?? surveys.error ?? unitEconomics.error ?? businessPlanError ?? experiments.error;
   if (error) throw error;
+  const experimentRows = (experiments.data ?? []) as DbExperiment[];
+  const fallbackBusinessPlans = experimentRows.filter(isBusinessPlanExperiment).map(fromBusinessPlanExperiment);
+  const visibleExperiments = experimentRows.filter((row) => !isBusinessPlanExperiment(row));
 
   return {
     companies: (companies.data ?? []).map((row) => fromCompany(row as DbCompany)),
     funnels: (funnels.data ?? []).map((row) => fromFunnel(row as DbFunnel)),
     surveys: (surveys.data ?? []).map((row) => fromSurvey(row as DbSurvey)),
     unitEconomics: (unitEconomics.data ?? []).map((row) => fromUnitEconomics(row as DbUnitEconomics)),
-    businessPlans: businessPlans.error ? [] : (businessPlans.data ?? []).map((row) => fromBusinessPlan(row as DbBusinessPlan)),
-    experiments: (experiments.data ?? []).map((row) => fromExperiment(row as DbExperiment))
+    businessPlans: businessPlans.error ? fallbackBusinessPlans : (businessPlans.data ?? []).map((row) => fromBusinessPlan(row as DbBusinessPlan)),
+    experiments: visibleExperiments.map(fromExperiment)
   };
 }
 
@@ -407,7 +438,13 @@ export async function upsertAppData(data: AppData) {
 
   if ((prepared.businessPlans ?? []).length > 0) {
     const { error } = await client.from("business_plans").upsert((prepared.businessPlans ?? []).map(toBusinessPlanRow), { onConflict: "month" });
-    if (error) throw error;
+    if (error) {
+      if (isMissingBusinessPlansTable(error)) {
+        await upsertBusinessPlanExperiments(client, prepared.businessPlans ?? []);
+      } else {
+        throw error;
+      }
+    }
   }
 
   if (prepared.funnels.length > 0) {
@@ -474,7 +511,12 @@ function isMissingFunnelSourceColumn(error: { message?: string; code?: string })
 
 function isMissingBusinessPlansTable(error: { message?: string; code?: string }) {
   const message = error.message ?? "";
-  return error.code === "PGRST205" || message.includes("business_plans");
+  return ["PGRST204", "PGRST205", "42P01"].includes(error.code ?? "") || message.includes("business_plans");
+}
+
+async function upsertBusinessPlanExperiments(client: ReturnType<typeof requireSupabase>, plans: BusinessPlan[]) {
+  const { error } = await client.from("experiments").upsert(plans.map(toBusinessPlanExperimentRow), { onConflict: "id" });
+  if (error) throw error;
 }
 
 export async function deleteCompanyRecord(id: string) {
@@ -512,11 +554,26 @@ export async function upsertUnitEconomics(item: UnitEconomics) {
 }
 
 export async function upsertBusinessPlan(plan: BusinessPlan) {
-  const { error } = await requireSupabase().from("business_plans").upsert(toBusinessPlanRow(plan), { onConflict: "month" });
-  if (error) throw error;
+  const client = requireSupabase();
+  const { error } = await client.from("business_plans").upsert(toBusinessPlanRow(plan), { onConflict: "month" });
+  if (error) {
+    if (isMissingBusinessPlansTable(error)) {
+      await upsertBusinessPlanExperiments(client, [plan]);
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function deleteBusinessPlanRecord(id: string) {
-  const { error } = await requireSupabase().from("business_plans").delete().eq("id", id);
-  if (error) throw error;
+  const client = requireSupabase();
+  const { error } = await client.from("business_plans").delete().eq("id", id);
+  if (error) {
+    if (isMissingBusinessPlansTable(error)) {
+      const fallback = await client.from("experiments").delete().eq("id", id);
+      if (fallback.error) throw fallback.error;
+      return;
+    }
+    throw error;
+  }
 }

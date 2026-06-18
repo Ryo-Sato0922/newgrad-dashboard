@@ -1129,7 +1129,7 @@ function BusinessPlanForm({
       try {
         await upsertBusinessPlan(nextPlan);
       } catch {
-        afterSave("月次計画の保存に失敗しました。DBにBusiness Planテーブルを追加してください");
+        afterSave("月次計画の保存に失敗しました。DB保存設定を確認してください");
         return;
       }
     }

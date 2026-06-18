@@ -722,7 +722,7 @@ function BusinessPlanView({
         <MetricCard label="計画導入社数" value={`${num(totals.target)}社`} sub={formatMonthRangeLabel(months)} />
         <MetricCard label="実績導入社数" value={`${num(totals.actual)}社`} sub={basis === "application" ? "P7 + 申込書回収日 + 契約開始日" : "P7 + 契約開始日"} tone="good" />
         <MetricCard label="実績達成率" value={pct(rate(totals.actual, totals.target))} sub={`差分 ${formatSignedNumber(totals.actual - totals.target)}社`} tone={totals.actual >= totals.target ? "good" : "warn"} />
-        <MetricCard label="標準着地見込み" value={`${num(totals.standard)}社`} sub="実績 + ★★★ + ★★" tone={totals.standard >= totals.target ? "good" : "warn"} />
+        <MetricCard label="標準着地見込み" value={`${formatDecimalCompanies(totals.standard)}社`} sub="実績 + ★★★80% + ★★50% + ★25%" tone={totals.standard >= totals.target ? "good" : "warn"} />
         <MetricCard label="Pipeline ★★★ / ★★" value={`${num(totals.star3)} / ${num(totals.star2)}社`} sub={`★ ${num(totals.star1)}社 / 未設定 ${num(totals.unset)}社`} />
         <MetricCard label="未計上P7" value={`${num(totals.uncountedP7)}社`} sub="必要日付が未入力" tone={totals.uncountedP7 > 0 ? "warn" : "neutral"} />
       </div>
@@ -736,7 +736,7 @@ function BusinessPlanView({
           <BusinessPlanMonthlyChart data={chartRows} onMonthClick={setSelectedPipelineMonth} />
         </Card>
         <Card>
-          <div className="mb-4 text-sm font-semibold">累計 計画 vs 実績 vs 標準着地</div>
+          <div className="mb-4 text-sm font-semibold">累計 計画 vs 実績 vs 累計標準着地見込み</div>
           <BusinessPlanCumulativeChart data={cumulativeRows} />
         </Card>
       </div>
@@ -749,7 +749,7 @@ function BusinessPlanView({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1280px] text-left text-sm">
             <thead className="border-b border-line bg-yellow-50 text-xs text-muted">
-              <tr>{["月", "計画", "実績", "差分", "達成率", "★★★", "★★", "★", "標準着地", "標準差分", "未計上P7", "対象企業", "メモ", "操作"].map((head) => <th key={head} className="px-4 py-3 font-semibold">{head}</th>)}</tr>
+              <tr>{["月", "計画", "実績", "差分", "達成率", "★★★", "★★", "★", "標準着地見込み", "標準差分", "未計上P7", "対象企業", "メモ", "操作"].map((head) => <th key={head} className="px-4 py-3 font-semibold">{head}</th>)}</tr>
             </thead>
             <tbody>
               {rows.map((row) => {
@@ -765,8 +765,8 @@ function BusinessPlanView({
                     <td className="px-4 py-3">{num(row.pipelineStar3)}社</td>
                     <td className="px-4 py-3">{num(row.pipelineStar2)}社</td>
                     <td className="px-4 py-3">{num(row.pipelineStar1)}社</td>
-                    <td className="px-4 py-3 font-semibold text-ink">{num(row.standard)}社</td>
-                    <td className={cn("px-4 py-3 font-semibold", row.standardGap >= 0 ? "text-success" : "text-danger")}>{formatSignedNumber(row.standardGap)}社</td>
+                    <td className="px-4 py-3 font-semibold text-ink">{formatDecimalCompanies(row.standard)}社</td>
+                    <td className={cn("px-4 py-3 font-semibold", row.standardGap >= 0 ? "text-success" : "text-danger")}>{formatSignedDecimal(row.standardGap)}社</td>
                     <td className="px-4 py-3">{num(row.uncountedP7)}社</td>
                     <td className="px-4 py-3">
                       {actualCompanies.length === 0 ? <span className="text-muted">-</span> : (
@@ -1863,7 +1863,7 @@ function BusinessPlanPipelineModal({
             <MetricCard label="計画" value={`${num(row.targetCompanies)}社`} sub={row.plan?.memo || "月次目標"} />
             <MetricCard label="実績" value={`${num(row.actualCompanies)}社`} sub={`差分 ${formatSignedNumber(row.gap)}社`} tone={row.gap >= 0 ? "good" : "warn"} />
             <MetricCard label="ヨミ合計" value={`${num(row.pipelineStar3 + row.pipelineStar2 + row.pipelineStar1 + row.pipelineUnset)}社`} sub="契約予定日ベース" />
-            <MetricCard label="標準着地" value={`${num(row.standard)}社`} sub="実績 + ★★★ + ★★" tone={row.standardGap >= 0 ? "good" : "warn"} />
+            <MetricCard label="標準着地見込み" value={`${formatDecimalCompanies(row.standard)}社`} sub="実績 + ★★★80% + ★★50% + ★25%" tone={row.standardGap >= 0 ? "good" : "warn"} />
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -2447,6 +2447,18 @@ function formatMonthRangeLabel(months: string[]) {
 function formatSignedNumber(value: number) {
   if (value > 0) return `+${num(value)}`;
   if (value < 0) return `-${num(Math.abs(value))}`;
+  return "±0";
+}
+
+function formatDecimalCompanies(value: number) {
+  const rounded = Math.round(value * 10) / 10;
+  if (Number.isInteger(rounded)) return num(rounded);
+  return new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 1 }).format(rounded);
+}
+
+function formatSignedDecimal(value: number) {
+  if (value > 0) return `+${formatDecimalCompanies(value)}`;
+  if (value < 0) return `-${formatDecimalCompanies(Math.abs(value))}`;
   return "±0";
 }
 

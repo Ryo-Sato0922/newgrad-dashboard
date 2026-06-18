@@ -177,7 +177,7 @@ export function BusinessPlanCumulativeChart({ data }: { data: Array<Record<strin
         <Legend />
         <Line type="monotone" dataKey="cumulativeTarget" name="累計計画" stroke={black} strokeWidth={2.5} dot={{ r: 3, fill: black }} />
         <Line type="monotone" dataKey="cumulativeActual" name="累計実績" stroke={green} strokeWidth={2.5} dot={{ r: 3, fill: green }} />
-        <Line type="monotone" dataKey="cumulativeStandard" name="累計標準着地" stroke={amber} strokeWidth={2.5} strokeDasharray="4 4" dot={{ r: 3, fill: amber }} />
+        <Line type="monotone" dataKey="cumulativeStandard" name="累計標準着地見込み" stroke={amber} strokeWidth={2.5} strokeDasharray="4 4" dot={{ r: 3, fill: amber }} />
       </ComposedChart>
     </ResponsiveContainer>
   );

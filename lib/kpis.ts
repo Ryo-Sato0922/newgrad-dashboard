@@ -282,9 +282,12 @@ export function getBusinessPlanRows(data: KpiData = seedData, basis: BusinessPla
     const actualCompanies = data.companies.filter((company) => getBusinessPlanActualMonth(company, basis) === month);
     const pipelineCompanies = data.companies.filter((company) => getBusinessPlanPipelineMonth(company) === month);
     const pipelineByRating = getPipelineByRating(pipelineCompanies);
-    const conservative = actualCompanies.length + pipelineByRating["★★★"].count;
-    const standard = conservative + pipelineByRating["★★"].count;
-    const upside = standard + pipelineByRating["★"].count;
+    const conservative = actualCompanies.length + pipelineByRating["★★★"].count * 0.8;
+    const standard = actualCompanies.length
+      + pipelineByRating["★★★"].count * 0.8
+      + pipelineByRating["★★"].count * 0.5
+      + pipelineByRating["★"].count * 0.25;
+    const upside = actualCompanies.length + pipelineByRating["★★★"].count + pipelineByRating["★★"].count + pipelineByRating["★"].count;
     const targetCompanies = plan?.targetCompanies ?? 0;
     const uncountedP7Companies = data.companies.filter((company) => {
       if (company.clientPhase !== "P7") return false;

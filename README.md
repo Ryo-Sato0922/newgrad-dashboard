@@ -41,6 +41,7 @@ DASHBOARD_PASSWORD=your-secure-password
 - Executive Dashboard: 導入社数、提案社数、商談化率、受注率、提案→受注CVR、MRR、成功報酬、送客、体験、面談、内定、入社、粗利、10社目標進捗
 - FCST: 案件入力、テーブル/カンバン切替、企業詳細モーダル、企業データ編集/削除、契約期間/ARR見込み、ARR見込み案件数、MRR自動合計、提案→受注CVR、失注理由分析
 - Client: 登録済みクライアントの商談フェーズ管理。FCSTステータスとは別に、P0アポ予定からP7申込書回収までをカンバン/一覧で管理。Pipeline作成、NA予定日、商談メモの入力/編集に対応
+- Business Plan: 月次導入社数計画、申込書回収ベース/契約開始ベースの実績、契約予定日ベースのPipelineヨミを予実管理
 - Worker Funnel: 流入元入力/可視化、ファネル入力/編集/削除、閲覧から入社までのファネル、日時別のファネル推移、企業別/業界別比較、前月比較
 - Hiring Analytics: 内定率、入社率、企業別成果、業界別成果、属性別成果
 - Unit Economics: CAC、営業/CS工数、1内定あたり工数、月間運用コストの入力/編集、粗利率、LTV/CAC、回収期間、コホート
@@ -57,6 +58,7 @@ DASHBOARD_PASSWORD=your-secure-password
 - `supabase/seed.sql`: 初期ダミーデータ
 - `supabase/worker-source-funnel-migration.sql`: Workerの流入元別ファネル追加カラム
 - `supabase/forecast-rating-migration.sql`: Clientの受注ヨミ追加カラム
+- `supabase/business-plan-migration.sql`: Business Planの月次計画テーブル
 
 ## KPI Logic
 
@@ -77,6 +79,9 @@ DASHBOARD_PASSWORD=your-secure-password
 - LTV = 平均MRR × 12ヶ月 × 粗利率 + 平均成功報酬 × 粗利率
 - LTV/CAC = LTV / CAC
 - 回収期間 = CAC / 月次粗利
+- Business Plan実績（申込書回収ベース） = `P7` かつ `申込書回収日あり` かつ `契約開始日あり` の企業を申込書回収月で計上
+- Business Plan実績（契約開始ベース） = `P7` かつ `契約開始日あり` の企業を契約開始月で計上
+- Business Plan Pipelineヨミ = `P7未満` かつ `失注以外` かつ `契約予定日あり` の企業を契約予定月でヨミ別に積み上げ
 
 ## ER Diagram
 
@@ -165,6 +170,12 @@ erDiagram
     integer cohort_companies
     integer retained_companies
   }
+  business_plans {
+    uuid id PK
+    date month
+    integer target_companies
+    text memo
+  }
   experiments {
     uuid id PK
     text hypothesis
@@ -217,12 +228,19 @@ Clientページを追加する既存DBでは、以下をSupabase SQL editorで�
 -- supabase/forecast-rating-migration.sql
 ```
 
+Business Planを追加する既存DBでは、以下をSupabase SQL editorで実行してください。
+
+```sql
+-- supabase/business-plan-migration.sql
+```
+
 ## Data Entry
 
 入力専用ページではなく、数字を見るページの中でそのまま入力できます。初期ダミーデータは各カテゴリ1件だけ残しています。
 
 - FCSTページ: 企業、営業ステータス、業界、所在地エリア、契約期間、ARR見込み、MRR、成功報酬、採用人数、初回商談日、申込書回収日、契約日、失注理由、工数
 - Clientページ: Pipeline作成、登録済み企業ごとの商談フェーズ（P0 アポ予定、P1 案件の見極め、P2 課題の特定、P3 推進者との導入合意、P4 決裁者との導入合意、P5 価格・導入時期の合意、P6 稟議決裁、P7 申込書回収）、NA予定日、商談メモ
+- Business Planページ: 月次計画を編集から対象月、導入社数目標、メモを入力。単月/指定期間/通年、申込書回収ベース/契約開始ベースを切り替えて予実を確認
 - Workerページ: 企業、記録日、Braze配信、架電、アンケート/IV、閲覧、応募、勤務、リピート勤務、面談希望、選考参加、内定、入社
 - Unit Economicsページ: 対象月、月間運用コスト
 

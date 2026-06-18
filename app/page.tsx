@@ -7,6 +7,7 @@ import {
   BarChart3,
   BriefcaseBusiness,
   Building2,
+  CalendarDays,
   LayoutDashboard,
   LineChart,
   PanelsTopLeft,
@@ -17,11 +18,14 @@ import {
   UsersRound,
   X
 } from "lucide-react";
-import { FunnelChart, GrossProfitChart, HiringTrendChart, RevenueTrendChart, SimpleBarChart } from "@/components/charts";
+import { BusinessPlanCumulativeChart, BusinessPlanMonthlyChart, FunnelChart, GrossProfitChart, HiringTrendChart, RevenueTrendChart, SimpleBarChart } from "@/components/charts";
 import { Card, MetricCard, MetricChange, Pill, ProgressBar, SectionHeader, cn } from "@/components/ui";
-import { companies as seedCompanies, experiments as seedExperiments, funnels as seedFunnels, kpiSnapshots as seedKpiSnapshots, surveys as seedSurveys, unitEconomics as seedUnitEconomics } from "@/lib/data";
+import { businessPlans as seedBusinessPlans, companies as seedCompanies, experiments as seedExperiments, funnels as seedFunnels, kpiSnapshots as seedKpiSnapshots, surveys as seedSurveys, unitEconomics as seedUnitEconomics } from "@/lib/data";
 import {
+  BusinessPlanCountingBasis,
+  BusinessPlanPeriodMode,
   KpiData,
+  getBusinessPlanRows,
   getCompanyOutcomeData,
   getExecutiveKpis,
   getFunnelStages,
@@ -39,8 +43,8 @@ import {
   sum,
   yen
 } from "@/lib/kpis";
-import { deleteCompanyRecord, deleteFunnelRecord, fetchAppData, isSupabaseConfigured, upsertAppData, upsertCompany, upsertFunnel, upsertSurvey, upsertUnitEconomics } from "@/lib/supabase-store";
-import { AppData, ClientPhase, Company, CompanyStatus, Experiment, ExperimentStatus, ForecastRating, Funnel, InflowSourceFunnel, InflowSourceKey, Survey, UnitEconomics } from "@/lib/types";
+import { deleteBusinessPlanRecord, deleteCompanyRecord, deleteFunnelRecord, fetchAppData, isSupabaseConfigured, upsertAppData, upsertBusinessPlan, upsertCompany, upsertFunnel, upsertSurvey, upsertUnitEconomics } from "@/lib/supabase-store";
+import { AppData, BusinessPlan, ClientPhase, Company, CompanyStatus, Experiment, ExperimentStatus, ForecastRating, Funnel, InflowSourceFunnel, InflowSourceKey, Survey, UnitEconomics } from "@/lib/types";
 
 type DrilldownRow = { label: string; value: string; meta?: string; companyId?: string };
 type ExecutiveCard = { label: string; value: string; sub: string; tone?: "neutral" | "good" | "warn" | "bad"; formula: string; rows: DrilldownRow[]; change?: MetricChange };
@@ -52,6 +56,7 @@ const initialData: AppData = {
   funnels: seedFunnels.slice(0, 1),
   surveys: seedSurveys.slice(0, 1),
   unitEconomics: seedUnitEconomics.slice(0, 1),
+  businessPlans: seedBusinessPlans,
   experiments: seedExperiments.slice(0, 1)
 };
 
@@ -75,6 +80,7 @@ const nav = [
   { id: "executive", label: "Executive", icon: LayoutDashboard },
   { id: "sales", label: "FCST", icon: BriefcaseBusiness },
   { id: "client", label: "Client", icon: Building2 },
+  { id: "businessPlan", label: "Business Plan", icon: CalendarDays },
   { id: "worker", label: "Worker", icon: UsersRound },
   { id: "hiring", label: "Hiring", icon: BarChart3 },
   { id: "unit", label: "Unit Economics", icon: LineChart }
@@ -175,7 +181,8 @@ export default function Home() {
     companies: data.companies,
     funnels: getLatestFunnels(data.funnels),
     surveys: data.surveys,
-    unitEconomics: data.unitEconomics
+    unitEconomics: data.unitEconomics,
+    businessPlans: data.businessPlans
   }), [data]);
   const executive = getExecutiveKpis(kpiData);
 
@@ -282,6 +289,7 @@ export default function Home() {
           {active === "executive" && <ExecutiveView data={kpiData} onSelectCompany={setSelectedCompany} />}
           {active === "sales" && <SalesView data={kpiData} setData={setData} afterSave={afterSave} mode={pipelineMode} setMode={setPipelineMode} onSelect={setSelectedCompany} />}
           {active === "client" && <ClientView data={kpiData} setData={setData} afterSave={afterSave} onSelect={setSelectedCompany} />}
+          {active === "businessPlan" && <BusinessPlanView data={kpiData} setData={setData} afterSave={afterSave} onSelect={setSelectedCompany} />}
           {active === "worker" && <WorkerView data={{ ...kpiData, funnels: data.funnels }} setData={setData} afterSave={afterSave} onSelectCompany={setSelectedCompany} />}
           {active === "hiring" && <HiringView data={kpiData} />}
           {active === "unit" && <UnitView data={kpiData} setData={setData} afterSave={afterSave} />}
@@ -632,6 +640,172 @@ function ClientView({
   );
 }
 
+type BusinessPlanRow = ReturnType<typeof getBusinessPlanRows>[number];
+
+function BusinessPlanView({
+  data,
+  setData,
+  afterSave,
+  onSelect
+}: {
+  data: KpiData;
+  setData: React.Dispatch<React.SetStateAction<AppData>>;
+  afterSave: (message: string) => void;
+  onSelect: (company: Company) => void;
+}) {
+  const defaultMonth = getDefaultBusinessPlanMonth(data);
+  const [basis, setBasis] = useState<BusinessPlanCountingBasis>("application");
+  const [periodMode, setPeriodMode] = useState<BusinessPlanPeriodMode>("year");
+  const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
+  const [startMonth, setStartMonth] = useState(getFiscalYearStart(defaultMonth));
+  const [endMonth, setEndMonth] = useState(getFiscalYearEnd(defaultMonth));
+  const [editingPlan, setEditingPlan] = useState<BusinessPlan | null>(null);
+  const [isPlanPanelOpen, setIsPlanPanelOpen] = useState(false);
+
+  const months = getBusinessPlanPeriodMonths(periodMode, selectedMonth, startMonth, endMonth);
+  const rows = getFilledBusinessPlanRows(data, basis, months);
+  const totals = getBusinessPlanSummary(rows);
+  const chartRows = rows.map((row) => ({
+    month: row.month,
+    targetCompanies: row.targetCompanies,
+    actualCompanies: row.actualCompanies,
+    pipelineStar3: row.pipelineStar3,
+    pipelineStar2: row.pipelineStar2,
+    pipelineStar1: row.pipelineStar1
+  }));
+  const cumulativeRows = getBusinessPlanCumulativeRows(rows);
+  const uncountedCompanies = data.companies.filter((company) => rows.some((row) => row.uncountedP7CompanyIds.includes(company.id)));
+
+  function openPlanEditor(plan?: BusinessPlan | null, month = selectedMonth) {
+    setEditingPlan(plan ?? { id: crypto.randomUUID(), month, targetCompanies: 0, memo: "" });
+    setIsPlanPanelOpen(true);
+  }
+
+  async function deletePlan(plan: BusinessPlan) {
+    if (isSupabaseConfigured) {
+      try {
+        await deleteBusinessPlanRecord(plan.id);
+      } catch {
+        afterSave("月次計画の削除に失敗しました。DB設定を確認してください");
+        return;
+      }
+    }
+    setData((state) => ({
+      ...state,
+      businessPlans: state.businessPlans.filter((item) => item.id !== plan.id)
+    }));
+    afterSave("月次計画を削除しました");
+  }
+
+  return (
+    <div className="space-y-6">
+      <SectionHeader
+        title="Business Plan"
+        description="月次の導入社数計画に対して、実績と契約予定日ベースのヨミ積み上げを確認します。"
+        action={<button onClick={() => openPlanEditor(data.businessPlans?.find((plan) => plan.month === selectedMonth), selectedMonth)} className="inline-flex items-center gap-2 rounded-md border border-yellow-300 bg-accent px-3 py-2 text-xs font-semibold text-ink shadow-sm hover:bg-accent-strong"><Plus className="size-4" />月次計画を編集</button>}
+      />
+
+      <Card>
+        <div className="grid gap-4 lg:grid-cols-5">
+          <Select label="表示期間" value={periodMode} options={[{ value: "single", label: "単月" }, { value: "range", label: "指定期間" }, { value: "year", label: "通年" }]} onChange={(value) => setPeriodMode(value as BusinessPlanPeriodMode)} />
+          <Select label="実績計上基準" value={basis} options={[{ value: "application", label: "申込書回収ベース" }, { value: "contractStart", label: "契約開始ベース" }]} onChange={(value) => setBasis(value as BusinessPlanCountingBasis)} />
+          {periodMode === "single" ? <Input label="対象月" type="month" value={selectedMonth} onChange={setSelectedMonth} /> : null}
+          {periodMode !== "single" ? <Input label="開始月" type="month" value={startMonth} onChange={setStartMonth} /> : null}
+          {periodMode !== "single" ? <Input label="終了月" type="month" value={endMonth} onChange={setEndMonth} /> : null}
+          <ReadOnlyField label="Pipeline集計" value="契約予定日ベース" />
+        </div>
+      </Card>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <MetricCard label="計画導入社数" value={`${num(totals.target)}社`} sub={formatMonthRangeLabel(months)} />
+        <MetricCard label="実績導入社数" value={`${num(totals.actual)}社`} sub={basis === "application" ? "P7 + 申込書回収日 + 契約開始日" : "P7 + 契約開始日"} tone="good" />
+        <MetricCard label="実績達成率" value={pct(rate(totals.actual, totals.target))} sub={`差分 ${formatSignedNumber(totals.actual - totals.target)}社`} tone={totals.actual >= totals.target ? "good" : "warn"} />
+        <MetricCard label="標準着地見込み" value={`${num(totals.standard)}社`} sub="実績 + ★★★ + ★★" tone={totals.standard >= totals.target ? "good" : "warn"} />
+        <MetricCard label="Pipeline ★★★ / ★★" value={`${num(totals.star3)} / ${num(totals.star2)}社`} sub={`★ ${num(totals.star1)}社 / 未設定 ${num(totals.unset)}社`} />
+        <MetricCard label="未計上P7" value={`${num(totals.uncountedP7)}社`} sub="必要日付が未入力" tone={totals.uncountedP7 > 0 ? "warn" : "neutral"} />
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <div className="mb-4 text-sm font-semibold">月次 予実 & Pipelineヨミ</div>
+          <BusinessPlanMonthlyChart data={chartRows} />
+        </Card>
+        <Card>
+          <div className="mb-4 text-sm font-semibold">累計 計画 vs 実績 vs 標準着地</div>
+          <BusinessPlanCumulativeChart data={cumulativeRows} />
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden p-0">
+        <div className="flex items-center justify-between border-b border-line bg-panel px-4 py-3">
+          <div className="text-sm font-semibold">月次予実テーブル</div>
+          <Pill className="border-yellow-200 bg-yellow-50 text-muted">Pipelineは契約予定日ベース</Pill>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1280px] text-left text-sm">
+            <thead className="border-b border-line bg-yellow-50 text-xs text-muted">
+              <tr>{["月", "計画", "実績", "差分", "達成率", "★★★", "★★", "★", "標準着地", "標準差分", "未計上P7", "対象企業", "メモ", "操作"].map((head) => <th key={head} className="px-4 py-3 font-semibold">{head}</th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const plan = row.plan ?? data.businessPlans?.find((item) => item.month === row.month) ?? null;
+                const actualCompanies = row.actualCompanyIds.map((id) => data.companies.find((company) => company.id === id)).filter(Boolean) as Company[];
+                return (
+                  <tr key={row.month} className="border-b border-line last:border-0 hover:bg-yellow-50/70">
+                    <td className="px-4 py-3 font-medium text-ink">{row.month}</td>
+                    <td className="px-4 py-3">{num(row.targetCompanies)}社</td>
+                    <td className="px-4 py-3 font-semibold text-success">{num(row.actualCompanies)}社</td>
+                    <td className={cn("px-4 py-3 font-semibold", row.gap >= 0 ? "text-success" : "text-danger")}>{formatSignedNumber(row.gap)}社</td>
+                    <td className="px-4 py-3">{pct(row.achievementRate)}</td>
+                    <td className="px-4 py-3">{num(row.pipelineStar3)}社</td>
+                    <td className="px-4 py-3">{num(row.pipelineStar2)}社</td>
+                    <td className="px-4 py-3">{num(row.pipelineStar1)}社</td>
+                    <td className="px-4 py-3 font-semibold text-ink">{num(row.standard)}社</td>
+                    <td className={cn("px-4 py-3 font-semibold", row.standardGap >= 0 ? "text-success" : "text-danger")}>{formatSignedNumber(row.standardGap)}社</td>
+                    <td className="px-4 py-3">{num(row.uncountedP7)}社</td>
+                    <td className="px-4 py-3">
+                      {actualCompanies.length === 0 ? <span className="text-muted">-</span> : (
+                        <div className="flex flex-wrap gap-1">
+                          {actualCompanies.map((company) => <button key={company.id} type="button" onClick={() => onSelect(company)} className="rounded-full border border-line bg-white px-2 py-0.5 text-xs font-medium text-ink hover:bg-yellow-50">{company.name}</button>)}
+                        </div>
+                      )}
+                    </td>
+                    <td className="max-w-64 px-4 py-3 text-muted">{row.plan?.memo || "-"}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => openPlanEditor(plan, row.month)} className="inline-flex h-8 items-center justify-center rounded-md border border-line bg-white px-2.5 text-xs font-medium text-muted hover:bg-panel">編集</button>
+                        {plan ? <BusinessPlanDeleteButton plan={plan} onDelete={deletePlan} /> : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {uncountedCompanies.length > 0 ? (
+        <Card>
+          <div className="mb-3 text-sm font-semibold">未計上P7の確認</div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {uncountedCompanies.map((company) => (
+              <button key={company.id} type="button" onClick={() => onSelect(company)} className="rounded-md border border-yellow-200 bg-yellow-50/50 p-3 text-left hover:bg-yellow-50">
+                <div className="font-medium text-ink">{company.name}</div>
+                <div className="mt-1 text-xs text-muted">申込書回収日: {company.applicationReceivedDate ?? "-"} / 契約開始日: {company.contractStartDate ?? "-"}</div>
+              </button>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
+      <SidePanel title="月次計画を編集" open={isPlanPanelOpen} onClose={() => setIsPlanPanelOpen(false)}>
+        {editingPlan ? <BusinessPlanForm plan={editingPlan} data={data} setData={setData} afterSave={afterSave} onDone={() => setIsPlanPanelOpen(false)} /> : null}
+      </SidePanel>
+    </div>
+  );
+}
+
 function WorkerView({
   data,
   setData,
@@ -919,6 +1093,91 @@ function UnitCostForm({
         <SubmitButton label="運用コストを保存" />
       </form>
     </Card>
+  );
+}
+
+function BusinessPlanForm({
+  plan,
+  data,
+  setData,
+  afterSave,
+  onDone
+}: {
+  plan: BusinessPlan;
+  data: KpiData;
+  setData: React.Dispatch<React.SetStateAction<AppData>>;
+  afterSave: (message: string) => void;
+  onDone: () => void;
+}) {
+  const existing = data.businessPlans?.find((item) => item.month === plan.month);
+  const [form, setForm] = useState({
+    month: plan.month,
+    targetCompanies: String(plan.targetCompanies),
+    memo: plan.memo
+  });
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const sameMonthExisting = data.businessPlans?.find((item) => item.month === form.month);
+    const nextPlan: BusinessPlan = {
+      id: sameMonthExisting?.id ?? existing?.id ?? plan.id,
+      month: form.month,
+      targetCompanies: toNumber(form.targetCompanies),
+      memo: form.memo
+    };
+    if (isSupabaseConfigured) {
+      try {
+        await upsertBusinessPlan(nextPlan);
+      } catch {
+        afterSave("月次計画の保存に失敗しました。DBにBusiness Planテーブルを追加してください");
+        return;
+      }
+    }
+    setData((state) => ({
+      ...state,
+      businessPlans: [
+        ...state.businessPlans.filter((item) => item.month !== nextPlan.month && item.id !== nextPlan.id),
+        nextPlan
+      ].sort((a, b) => a.month.localeCompare(b.month))
+    }));
+    afterSave("月次計画を保存しました");
+    onDone();
+  }
+
+  return (
+    <Card>
+      <FormTitle title="月次導入計画" />
+      <form onSubmit={submit} className="mt-4 space-y-5">
+        <FormSection title="計画値">
+          <Input label="対象月" type="month" value={form.month} onChange={(month) => setForm({ ...form, month })} required />
+          <Input label="導入社数目標" type="number" value={form.targetCompanies} onChange={(targetCompanies) => setForm({ ...form, targetCompanies })} required />
+          <ReadOnlyField label="実績条件" value="P7 + 必要日付あり" />
+          <Textarea label="メモ" value={form.memo} onChange={(memo) => setForm({ ...form, memo })} className="lg:col-span-3" />
+        </FormSection>
+        <Info label="集計ルール" value="実績は申込書回収ベース/契約開始ベースを画面上で切替できます。Pipelineヨミは契約予定日ベースで積み上げます。" />
+        <SubmitButton label="月次計画を保存" />
+      </form>
+    </Card>
+  );
+}
+
+function BusinessPlanDeleteButton({ plan, onDelete }: { plan: BusinessPlan; onDelete: (plan: BusinessPlan) => void }) {
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setIsConfirmOpen(true)} className="inline-flex h-8 items-center justify-center rounded-md border border-red-200 px-2.5 text-xs font-medium text-danger hover:bg-red-50">削除</button>
+      {isConfirmOpen ? (
+        <ConfirmDialog
+          title="本当に削除しますか？"
+          description={`${plan.month} の月次計画を削除します。この操作は取り消せません。`}
+          onCancel={() => setIsConfirmOpen(false)}
+          onConfirm={() => {
+            setIsConfirmOpen(false);
+            onDelete(plan);
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -1929,6 +2188,7 @@ function ForecastPill({ rating }: { rating: ForecastRating }) {
 function normalizeAppData(data: AppData): AppData {
   return {
     ...data,
+    businessPlans: [...(data.businessPlans ?? seedBusinessPlans)].sort((a, b) => a.month.localeCompare(b.month)),
     companies: data.companies.map((company) => ({
       ...company,
       clientPhase: getClientPhase(company),
@@ -1938,6 +2198,111 @@ function normalizeAppData(data: AppData): AppData {
     })),
     funnels: data.funnels.map(normalizeFunnel)
   };
+}
+
+function getDefaultBusinessPlanMonth(data: KpiData) {
+  return data.businessPlans?.[0]?.month ?? data.companies.find((company) => company.contractTargetDate)?.contractTargetDate?.slice(0, 7) ?? formatLocalDate(new Date()).slice(0, 7);
+}
+
+function getFiscalYearStart(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const fiscalYear = monthNumber >= 4 ? year : year - 1;
+  return `${fiscalYear}-04`;
+}
+
+function getFiscalYearEnd(month: string) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const fiscalYear = monthNumber >= 4 ? year + 1 : year;
+  return `${fiscalYear}-03`;
+}
+
+function getBusinessPlanPeriodMonths(mode: BusinessPlanPeriodMode, selectedMonth: string, startMonth: string, endMonth: string) {
+  if (mode === "single") return [selectedMonth];
+  return getMonthRange(startMonth, endMonth);
+}
+
+function getMonthRange(startMonth: string, endMonth: string) {
+  const [startYear, startMonthNumber] = startMonth.split("-").map(Number);
+  const [endYear, endMonthNumber] = endMonth.split("-").map(Number);
+  const start = new Date(startYear, startMonthNumber - 1, 1);
+  const end = new Date(endYear, endMonthNumber - 1, 1);
+  if (start > end) return [startMonth];
+  const months: string[] = [];
+  const cursor = new Date(start);
+  while (cursor <= end && months.length < 36) {
+    months.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`);
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return months;
+}
+
+function getFilledBusinessPlanRows(data: KpiData, basis: BusinessPlanCountingBasis, months: string[]) {
+  const rowByMonth = new Map(getBusinessPlanRows(data, basis).map((row) => [row.month, row]));
+  return months.map((month) => rowByMonth.get(month) ?? createEmptyBusinessPlanRow(month));
+}
+
+function createEmptyBusinessPlanRow(month: string): BusinessPlanRow {
+  return {
+    month,
+    plan: undefined,
+    targetCompanies: 0,
+    actualCompanies: 0,
+    actualCompanyIds: [],
+    pipelineStar3: 0,
+    pipelineStar2: 0,
+    pipelineStar1: 0,
+    pipelineUnset: 0,
+    conservative: 0,
+    standard: 0,
+    upside: 0,
+    gap: 0,
+    standardGap: 0,
+    achievementRate: 0,
+    uncountedP7: 0,
+    uncountedP7CompanyIds: []
+  };
+}
+
+function getBusinessPlanSummary(rows: BusinessPlanRow[]) {
+  return {
+    target: sum(rows, (row) => row.targetCompanies),
+    actual: sum(rows, (row) => row.actualCompanies),
+    star3: sum(rows, (row) => row.pipelineStar3),
+    star2: sum(rows, (row) => row.pipelineStar2),
+    star1: sum(rows, (row) => row.pipelineStar1),
+    unset: sum(rows, (row) => row.pipelineUnset),
+    standard: sum(rows, (row) => row.standard),
+    uncountedP7: sum(rows, (row) => row.uncountedP7)
+  };
+}
+
+function getBusinessPlanCumulativeRows(rows: BusinessPlanRow[]) {
+  let cumulativeTarget = 0;
+  let cumulativeActual = 0;
+  let cumulativeStandard = 0;
+  return rows.map((row) => {
+    cumulativeTarget += row.targetCompanies;
+    cumulativeActual += row.actualCompanies;
+    cumulativeStandard += row.standard;
+    return {
+      month: row.month,
+      cumulativeTarget,
+      cumulativeActual,
+      cumulativeStandard
+    };
+  });
+}
+
+function formatMonthRangeLabel(months: string[]) {
+  if (months.length === 0) return "-";
+  if (months.length === 1) return months[0];
+  return `${months[0]} - ${months[months.length - 1]}`;
+}
+
+function formatSignedNumber(value: number) {
+  if (value > 0) return `+${num(value)}`;
+  if (value < 0) return `-${num(Math.abs(value))}`;
+  return "±0";
 }
 
 function getExecutiveTrendData(data: KpiData) {
@@ -2077,7 +2442,8 @@ function getDataAsOf(data: KpiData, cutoff: string): KpiData {
     companies,
     funnels: getLatestFunnels(data.funnels.filter((funnel) => companyIds.has(funnel.companyId) && funnel.recordedAt <= cutoff)),
     surveys: data.surveys.filter((survey) => companyIds.has(survey.companyId)),
-    unitEconomics: data.unitEconomics.filter((item) => `${item.month}-01`.slice(0, 10) <= cutoff)
+    unitEconomics: data.unitEconomics.filter((item) => `${item.month}-01`.slice(0, 10) <= cutoff),
+    businessPlans: data.businessPlans?.filter((item) => `${item.month}-01`.slice(0, 10) <= cutoff) ?? []
   };
 }
 

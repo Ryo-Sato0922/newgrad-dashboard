@@ -135,3 +135,39 @@ export function GrossProfitChart({ data }: { data: Array<Record<string, string |
     </ResponsiveContainer>
   );
 }
+
+export function BusinessPlanMonthlyChart({ data }: { data: Array<Record<string, string | number>> }) {
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <ComposedChart data={data} margin={{ top: 10, right: 8, bottom: 0, left: -14 }}>
+        <CartesianGrid stroke={grid} vertical={false} />
+        <XAxis dataKey="month" tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={tooltipStyle} />
+        <Legend />
+        <Bar dataKey="actualCompanies" name="実績" fill={green} radius={[4, 4, 0, 0]} />
+        <Bar dataKey="pipelineStar3" name="★★★" stackId="pipeline" fill="#0f7a55" radius={[4, 4, 0, 0]} />
+        <Bar dataKey="pipelineStar2" name="★★" stackId="pipeline" fill={yellow} radius={[4, 4, 0, 0]} />
+        <Bar dataKey="pipelineStar1" name="★" stackId="pipeline" fill={amber} radius={[4, 4, 0, 0]} />
+        <Line type="monotone" dataKey="targetCompanies" name="計画" stroke={black} strokeWidth={2.5} dot={{ r: 3, fill: black }} />
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}
+
+export function BusinessPlanCumulativeChart({ data }: { data: Array<Record<string, string | number>> }) {
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <ComposedChart data={data} margin={{ top: 10, right: 8, bottom: 0, left: -14 }}>
+        <CartesianGrid stroke={grid} vertical={false} />
+        <XAxis dataKey="month" tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} />
+        <YAxis tick={{ fill: ink, fontSize: 12 }} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={tooltipStyle} />
+        <Legend />
+        <Line type="monotone" dataKey="cumulativeTarget" name="累計計画" stroke={black} strokeWidth={2.5} dot={{ r: 3, fill: black }} />
+        <Line type="monotone" dataKey="cumulativeActual" name="累計実績" stroke={green} strokeWidth={2.5} dot={{ r: 3, fill: green }} />
+        <Line type="monotone" dataKey="cumulativeStandard" name="累計標準着地" stroke={amber} strokeWidth={2.5} strokeDasharray="4 4" dot={{ r: 3, fill: amber }} />
+      </ComposedChart>
+    </ResponsiveContainer>
+  );
+}

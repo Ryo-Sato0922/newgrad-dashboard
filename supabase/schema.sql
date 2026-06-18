@@ -97,6 +97,15 @@ create table unit_economics (
   retained_companies integer not null default 0
 );
 
+create table business_plans (
+  id uuid primary key default uuid_generate_v4(),
+  month date not null unique,
+  target_companies integer not null default 0,
+  memo text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table experiments (
   id uuid primary key default uuid_generate_v4(),
   hypothesis text not null,
@@ -114,6 +123,7 @@ create index companies_client_phase_idx on companies(client_phase);
 create index companies_industry_idx on companies(industry);
 create index worker_funnels_company_month_idx on worker_funnels(company_id, month);
 create index student_surveys_company_idx on student_surveys(company_id);
+create index business_plans_month_idx on business_plans(month);
 
 -- Existing projects can run this migration safely after the first schema was already created.
 do $$ begin
@@ -153,3 +163,13 @@ create index if not exists companies_client_phase_idx on companies(client_phase)
 
 alter table worker_funnels add column if not exists overview_recommendations integer not null default 0;
 alter table worker_funnels add column if not exists source_funnels jsonb not null default '{}'::jsonb;
+
+create table if not exists business_plans (
+  id uuid primary key default uuid_generate_v4(),
+  month date not null unique,
+  target_companies integer not null default 0,
+  memo text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists business_plans_month_idx on business_plans(month);

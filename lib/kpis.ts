@@ -1,19 +1,24 @@
-import { companies as seedCompanies, funnels as seedFunnels, kpiSnapshots, surveys as seedSurveys, unitEconomics as seedUnitEconomics } from "./data";
-import { Company, Funnel, Survey, UnitEconomics } from "./types";
+import { businessPlans as seedBusinessPlans, companies as seedCompanies, funnels as seedFunnels, kpiSnapshots, surveys as seedSurveys, unitEconomics as seedUnitEconomics } from "./data";
+import { BusinessPlan, Company, ForecastRating, Funnel, Survey, UnitEconomics } from "./types";
 
 export type KpiData = {
   companies: Company[];
   funnels: Funnel[];
   surveys: Survey[];
   unitEconomics: UnitEconomics[];
+  businessPlans?: BusinessPlan[];
 };
 
 const seedData: KpiData = {
   companies: seedCompanies,
   funnels: seedFunnels,
   surveys: seedSurveys,
-  unitEconomics: seedUnitEconomics
+  unitEconomics: seedUnitEconomics,
+  businessPlans: seedBusinessPlans
 };
+
+export type BusinessPlanCountingBasis = "application" | "contractStart";
+export type BusinessPlanPeriodMode = "single" | "range" | "year";
 
 const defaultUnitEconomics: UnitEconomics = {
   month: "2026-05",
@@ -38,6 +43,21 @@ export function sum<T>(items: T[], selector: (item: T) => number) {
 
 export function hasApplicationCollected(company: Company) {
   return company.clientPhase === "P7";
+}
+
+export function isBusinessPlanActualCompany(company: Company) {
+  return hasApplicationCollected(company) && Boolean(company.contractStartDate);
+}
+
+export function getBusinessPlanActualMonth(company: Company, basis: BusinessPlanCountingBasis) {
+  if (!isBusinessPlanActualCompany(company)) return null;
+  if (basis === "application") return company.applicationReceivedDate?.slice(0, 7) ?? null;
+  return company.contractStartDate?.slice(0, 7) ?? null;
+}
+
+export function getBusinessPlanPipelineMonth(company: Company) {
+  if (company.status === "失注" || company.clientPhase === "失注" || company.clientPhase === "P7") return null;
+  return company.contractTargetDate?.slice(0, 7) ?? null;
 }
 
 function getLocalDateKey(date = new Date()) {
@@ -240,6 +260,69 @@ export function getUnitRows(data: KpiData = seedData) {
     { label: "1社LTV試算", value: yen(getLtvCac(data).ltv), sub: "12ヶ月継続 + 成功報酬" },
     { label: "回収期間", value: `${getLtvCac(data).paybackMonths.toFixed(1)}ヶ月`, sub: "CAC / 月次粗利" }
   ];
+}
+
+export function getBusinessPlanMonths(data: KpiData = seedData) {
+  const months = new Set<string>();
+  (data.businessPlans ?? []).forEach((plan) => months.add(plan.month));
+  data.companies.forEach((company) => {
+    [company.applicationReceivedDate, company.contractStartDate, company.contractTargetDate].forEach((date) => {
+      if (date) months.add(date.slice(0, 7));
+    });
+  });
+  if (months.size === 0) months.add(new Date().toISOString().slice(0, 7));
+  return [...months].sort();
+}
+
+export function getBusinessPlanRows(data: KpiData = seedData, basis: BusinessPlanCountingBasis = "application") {
+  const plans = data.businessPlans ?? [];
+  const planByMonth = new Map(plans.map((plan) => [plan.month, plan]));
+  return getBusinessPlanMonths(data).map((month) => {
+    const plan = planByMonth.get(month);
+    const actualCompanies = data.companies.filter((company) => getBusinessPlanActualMonth(company, basis) === month);
+    const pipelineCompanies = data.companies.filter((company) => getBusinessPlanPipelineMonth(company) === month);
+    const pipelineByRating = getPipelineByRating(pipelineCompanies);
+    const conservative = actualCompanies.length + pipelineByRating["★★★"];
+    const standard = conservative + pipelineByRating["★★"];
+    const upside = standard + pipelineByRating["★"];
+    const targetCompanies = plan?.targetCompanies ?? 0;
+    const uncountedP7Companies = data.companies.filter((company) => {
+      if (company.clientPhase !== "P7") return false;
+      if (basis === "application") {
+        return (!company.applicationReceivedDate || !company.contractStartDate)
+          && ((company.applicationReceivedDate ?? company.contractStartDate ?? company.contractTargetDate)?.slice(0, 7) === month);
+      }
+      return !company.contractStartDate && ((company.applicationReceivedDate ?? company.contractTargetDate)?.slice(0, 7) === month);
+    });
+
+    return {
+      month,
+      plan,
+      targetCompanies,
+      actualCompanies: actualCompanies.length,
+      actualCompanyIds: actualCompanies.map((company) => company.id),
+      pipelineStar3: pipelineByRating["★★★"],
+      pipelineStar2: pipelineByRating["★★"],
+      pipelineStar1: pipelineByRating["★"],
+      pipelineUnset: pipelineByRating["-"],
+      conservative,
+      standard,
+      upside,
+      gap: actualCompanies.length - targetCompanies,
+      standardGap: standard - targetCompanies,
+      achievementRate: rate(actualCompanies.length, targetCompanies),
+      uncountedP7: uncountedP7Companies.length,
+      uncountedP7CompanyIds: uncountedP7Companies.map((company) => company.id)
+    };
+  });
+}
+
+function getPipelineByRating(companies: Company[]): Record<ForecastRating, number> {
+  return companies.reduce<Record<ForecastRating, number>>((acc, company) => {
+    const rating = company.forecastRating ?? "-";
+    acc[rating] += 1;
+    return acc;
+  }, { "★★★": 0, "★★": 0, "★": 0, "-": 0 });
 }
 
 export { kpiSnapshots };

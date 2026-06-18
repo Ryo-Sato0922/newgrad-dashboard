@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { AppData, ClientPhase, Company, Experiment, ForecastRating, Funnel, InflowSourceFunnel, Survey, UnitEconomics } from "./types";
+import { AppData, BusinessPlan, ClientPhase, Company, Experiment, ForecastRating, Funnel, InflowSourceFunnel, Survey, UnitEconomics } from "./types";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -79,6 +79,13 @@ type DbUnitEconomics = {
   cohort: string;
   cohort_companies: number;
   retained_companies: number;
+};
+
+type DbBusinessPlan = {
+  id: string;
+  month: string;
+  target_companies: number | null;
+  memo: string | null;
 };
 
 type DbExperiment = {
@@ -299,6 +306,24 @@ function toUnitEconomicsRow(item: UnitEconomics) {
   };
 }
 
+function fromBusinessPlan(row: DbBusinessPlan): BusinessPlan {
+  return {
+    id: row.id,
+    month: monthToInput(row.month),
+    targetCompanies: row.target_companies ?? 0,
+    memo: row.memo ?? ""
+  };
+}
+
+function toBusinessPlanRow(plan: BusinessPlan) {
+  return {
+    id: plan.id,
+    month: plan.month.length === 7 ? `${plan.month}-01` : plan.month,
+    target_companies: plan.targetCompanies,
+    memo: plan.memo
+  };
+}
+
 function fromExperiment(row: DbExperiment): Experiment {
   return {
     id: row.id,
@@ -314,15 +339,17 @@ function fromExperiment(row: DbExperiment): Experiment {
 
 export async function fetchAppData(): Promise<AppData> {
   const client = requireSupabase();
-  const [companies, funnels, surveys, unitEconomics, experiments] = await Promise.all([
+  const [companies, funnels, surveys, unitEconomics, businessPlans, experiments] = await Promise.all([
     client.from("companies").select("*").order("created_at", { ascending: false }),
     client.from("worker_funnels").select("*").order("month", { ascending: false }),
     client.from("student_surveys").select("*").order("answered_at", { ascending: false }),
     client.from("unit_economics").select("*").order("month", { ascending: true }),
+    client.from("business_plans").select("*").order("month", { ascending: true }),
     client.from("experiments").select("*").order("created_at", { ascending: false })
   ]);
 
-  const error = companies.error ?? funnels.error ?? surveys.error ?? unitEconomics.error ?? experiments.error;
+  const businessPlanError = businessPlans.error && !isMissingBusinessPlansTable(businessPlans.error) ? businessPlans.error : null;
+  const error = companies.error ?? funnels.error ?? surveys.error ?? unitEconomics.error ?? businessPlanError ?? experiments.error;
   if (error) throw error;
 
   return {
@@ -330,6 +357,7 @@ export async function fetchAppData(): Promise<AppData> {
     funnels: (funnels.data ?? []).map((row) => fromFunnel(row as DbFunnel)),
     surveys: (surveys.data ?? []).map((row) => fromSurvey(row as DbSurvey)),
     unitEconomics: (unitEconomics.data ?? []).map((row) => fromUnitEconomics(row as DbUnitEconomics)),
+    businessPlans: businessPlans.error ? [] : (businessPlans.data ?? []).map((row) => fromBusinessPlan(row as DbBusinessPlan)),
     experiments: (experiments.data ?? []).map((row) => fromExperiment(row as DbExperiment))
   };
 }
@@ -353,12 +381,14 @@ export function prepareAppDataForSupabase(data: AppData): AppData {
   const surveys = data.surveys
     .map((survey) => ({ ...survey, id: normalizeId(survey.id), companyId: normalizeId(survey.companyId) }))
     .filter((survey) => companyIds.has(survey.companyId));
+  const businessPlans = (data.businessPlans ?? []).map((plan) => ({ ...plan, id: normalizeId(plan.id) }));
 
   return {
     ...data,
     companies,
     funnels,
-    surveys
+    surveys,
+    businessPlans
   };
 }
 
@@ -372,6 +402,11 @@ export async function upsertAppData(data: AppData) {
 
   if (prepared.unitEconomics.length > 0) {
     const { error } = await client.from("unit_economics").upsert(prepared.unitEconomics.map(toUnitEconomicsRow), { onConflict: "month" });
+    if (error) throw error;
+  }
+
+  if ((prepared.businessPlans ?? []).length > 0) {
+    const { error } = await client.from("business_plans").upsert((prepared.businessPlans ?? []).map(toBusinessPlanRow), { onConflict: "month" });
     if (error) throw error;
   }
 
@@ -437,6 +472,11 @@ function isMissingFunnelSourceColumn(error: { message?: string; code?: string })
   return error.code === "PGRST204" || ["overview_recommendations", "source_funnels"].some((column) => message.includes(column));
 }
 
+function isMissingBusinessPlansTable(error: { message?: string; code?: string }) {
+  const message = error.message ?? "";
+  return error.code === "PGRST205" || message.includes("business_plans");
+}
+
 export async function deleteCompanyRecord(id: string) {
   const { error } = await requireSupabase().from("companies").delete().eq("id", id);
   if (error) throw error;
@@ -468,5 +508,15 @@ export async function upsertSurvey(survey: Survey) {
 
 export async function upsertUnitEconomics(item: UnitEconomics) {
   const { error } = await requireSupabase().from("unit_economics").upsert(toUnitEconomicsRow(item), { onConflict: "month" });
+  if (error) throw error;
+}
+
+export async function upsertBusinessPlan(plan: BusinessPlan) {
+  const { error } = await requireSupabase().from("business_plans").upsert(toBusinessPlanRow(plan), { onConflict: "month" });
+  if (error) throw error;
+}
+
+export async function deleteBusinessPlanRecord(id: string) {
+  const { error } = await requireSupabase().from("business_plans").delete().eq("id", id);
   if (error) throw error;
 }

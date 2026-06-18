@@ -1,4 +1,4 @@
-import { Company, Experiment, Funnel, KpiSnapshot, Survey, UnitEconomics } from "./types";
+import { BusinessPlan, Company, Experiment, Funnel, KpiSnapshot, Survey, UnitEconomics } from "./types";
 
 export const companies: Company[] = [
   {
@@ -99,6 +99,27 @@ export const unitEconomics: UnitEconomics[] = [
     cohort: "May",
     cohortCompanies: 1,
     retainedCompanies: 1
+  }
+];
+
+export const businessPlans: BusinessPlan[] = [
+  {
+    id: "bp1",
+    month: "2026-04",
+    targetCompanies: 1,
+    memo: "PoC初月。P7かつ契約開始日ありを実績計上。"
+  },
+  {
+    id: "bp2",
+    month: "2026-05",
+    targetCompanies: 3,
+    memo: "導入社数の月次予実を確認。"
+  },
+  {
+    id: "bp3",
+    month: "2026-06",
+    targetCompanies: 6,
+    memo: "10社目標に向けた積み上げ月。"
   }
 ];
 

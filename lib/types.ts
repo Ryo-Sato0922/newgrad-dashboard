@@ -104,6 +104,13 @@ export type UnitEconomics = {
   retainedCompanies: number;
 };
 
+export type BusinessPlan = {
+  id: string;
+  month: string;
+  targetCompanies: number;
+  memo: string;
+};
+
 export type Experiment = {
   id: string;
   hypothesis: string;
@@ -120,5 +127,6 @@ export type AppData = {
   funnels: Funnel[];
   surveys: Survey[];
   unitEconomics: UnitEconomics[];
+  businessPlans: BusinessPlan[];
   experiments: Experiment[];
 };

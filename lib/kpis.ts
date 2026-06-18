@@ -282,9 +282,9 @@ export function getBusinessPlanRows(data: KpiData = seedData, basis: BusinessPla
     const actualCompanies = data.companies.filter((company) => getBusinessPlanActualMonth(company, basis) === month);
     const pipelineCompanies = data.companies.filter((company) => getBusinessPlanPipelineMonth(company) === month);
     const pipelineByRating = getPipelineByRating(pipelineCompanies);
-    const conservative = actualCompanies.length + pipelineByRating["★★★"];
-    const standard = conservative + pipelineByRating["★★"];
-    const upside = standard + pipelineByRating["★"];
+    const conservative = actualCompanies.length + pipelineByRating["★★★"].count;
+    const standard = conservative + pipelineByRating["★★"].count;
+    const upside = standard + pipelineByRating["★"].count;
     const targetCompanies = plan?.targetCompanies ?? 0;
     const uncountedP7Companies = data.companies.filter((company) => {
       if (company.clientPhase !== "P7") return false;
@@ -301,10 +301,14 @@ export function getBusinessPlanRows(data: KpiData = seedData, basis: BusinessPla
       targetCompanies,
       actualCompanies: actualCompanies.length,
       actualCompanyIds: actualCompanies.map((company) => company.id),
-      pipelineStar3: pipelineByRating["★★★"],
-      pipelineStar2: pipelineByRating["★★"],
-      pipelineStar1: pipelineByRating["★"],
-      pipelineUnset: pipelineByRating["-"],
+      pipelineStar3: pipelineByRating["★★★"].count,
+      pipelineStar2: pipelineByRating["★★"].count,
+      pipelineStar1: pipelineByRating["★"].count,
+      pipelineUnset: pipelineByRating["-"].count,
+      pipelineStar3CompanyIds: pipelineByRating["★★★"].companyIds,
+      pipelineStar2CompanyIds: pipelineByRating["★★"].companyIds,
+      pipelineStar1CompanyIds: pipelineByRating["★"].companyIds,
+      pipelineUnsetCompanyIds: pipelineByRating["-"].companyIds,
       conservative,
       standard,
       upside,
@@ -317,12 +321,18 @@ export function getBusinessPlanRows(data: KpiData = seedData, basis: BusinessPla
   });
 }
 
-function getPipelineByRating(companies: Company[]): Record<ForecastRating, number> {
-  return companies.reduce<Record<ForecastRating, number>>((acc, company) => {
+function getPipelineByRating(companies: Company[]): Record<ForecastRating, { count: number; companyIds: string[] }> {
+  return companies.reduce<Record<ForecastRating, { count: number; companyIds: string[] }>>((acc, company) => {
     const rating = company.forecastRating ?? "-";
-    acc[rating] += 1;
+    acc[rating].count += 1;
+    acc[rating].companyIds.push(company.id);
     return acc;
-  }, { "★★★": 0, "★★": 0, "★": 0, "-": 0 });
+  }, {
+    "★★★": { count: 0, companyIds: [] },
+    "★★": { count: 0, companyIds: [] },
+    "★": { count: 0, companyIds: [] },
+    "-": { count: 0, companyIds: [] }
+  });
 }
 
 export { kpiSnapshots };

@@ -661,10 +661,12 @@ function BusinessPlanView({
   const [endMonth, setEndMonth] = useState(getFiscalYearEnd(defaultMonth));
   const [editingPlan, setEditingPlan] = useState<BusinessPlan | null>(null);
   const [isPlanPanelOpen, setIsPlanPanelOpen] = useState(false);
+  const [selectedPipelineMonth, setSelectedPipelineMonth] = useState<string | null>(null);
 
   const months = getBusinessPlanPeriodMonths(periodMode, selectedMonth, startMonth, endMonth);
   const rows = getFilledBusinessPlanRows(data, basis, months);
   const totals = getBusinessPlanSummary(rows);
+  const selectedPipelineRow = selectedPipelineMonth ? rows.find((row) => row.month === selectedPipelineMonth) ?? null : null;
   const chartRows = rows.map((row) => ({
     month: row.month,
     targetCompanies: row.targetCompanies,
@@ -727,8 +729,11 @@ function BusinessPlanView({
 
       <div className="grid gap-4 xl:grid-cols-2">
         <Card>
-          <div className="mb-4 text-sm font-semibold">月次 予実 & Pipelineヨミ</div>
-          <BusinessPlanMonthlyChart data={chartRows} />
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold">月次 予実 & Pipelineヨミ</div>
+            <span className="text-xs text-muted">棒をクリックで月別内訳</span>
+          </div>
+          <BusinessPlanMonthlyChart data={chartRows} onMonthClick={setSelectedPipelineMonth} />
         </Card>
         <Card>
           <div className="mb-4 text-sm font-semibold">累計 計画 vs 実績 vs 標準着地</div>
@@ -773,6 +778,7 @@ function BusinessPlanView({
                     <td className="max-w-64 px-4 py-3 text-muted">{row.plan?.memo || "-"}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
+                        <button type="button" onClick={() => setSelectedPipelineMonth(row.month)} className="inline-flex h-8 items-center justify-center rounded-md border border-line bg-white px-2.5 text-xs font-medium text-muted hover:bg-panel">内訳</button>
                         <button type="button" onClick={() => openPlanEditor(plan, row.month)} className="inline-flex h-8 items-center justify-center rounded-md border border-line bg-white px-2.5 text-xs font-medium text-muted hover:bg-panel">編集</button>
                         {plan ? <BusinessPlanDeleteButton plan={plan} onDelete={deletePlan} /> : null}
                       </div>
@@ -797,6 +803,16 @@ function BusinessPlanView({
             ))}
           </div>
         </Card>
+      ) : null}
+
+      {selectedPipelineRow ? (
+        <BusinessPlanPipelineModal
+          row={selectedPipelineRow}
+          companies={data.companies}
+          basis={basis}
+          onSelectCompany={onSelect}
+          onClose={() => setSelectedPipelineMonth(null)}
+        />
       ) : null}
 
       <SidePanel title="月次計画を編集" open={isPlanPanelOpen} onClose={() => setIsPlanPanelOpen(false)}>
@@ -1773,6 +1789,131 @@ function ExecutiveDrilldownModal({
   );
 }
 
+function BusinessPlanPipelineModal({
+  row,
+  companies,
+  basis,
+  onSelectCompany,
+  onClose
+}: {
+  row: BusinessPlanRow;
+  companies: Company[];
+  basis: BusinessPlanCountingBasis;
+  onSelectCompany: (company: Company) => void;
+  onClose: () => void;
+}) {
+  const sections = [
+    {
+      title: "実績",
+      description: basis === "application" ? "P7 + 申込書回収日 + 契約開始日" : "P7 + 契約開始日",
+      ids: row.actualCompanyIds,
+      tone: "border-green-200 bg-green-50 text-green-700"
+    },
+    {
+      title: "ヨミ ★★★",
+      description: "契約予定日ベース",
+      ids: row.pipelineStar3CompanyIds,
+      tone: "border-green-200 bg-green-50 text-green-700"
+    },
+    {
+      title: "ヨミ ★★",
+      description: "契約予定日ベース",
+      ids: row.pipelineStar2CompanyIds,
+      tone: "border-yellow-200 bg-yellow-50 text-yellow-800"
+    },
+    {
+      title: "ヨミ ★",
+      description: "契約予定日ベース",
+      ids: row.pipelineStar1CompanyIds,
+      tone: "border-amber-200 bg-amber-50 text-amber-700"
+    },
+    {
+      title: "ヨミ 未設定",
+      description: "契約予定日ベース",
+      ids: row.pipelineUnsetCompanyIds,
+      tone: "border-line bg-panel text-muted"
+    },
+    {
+      title: "未計上P7",
+      description: "必要日付が未入力",
+      ids: row.uncountedP7CompanyIds,
+      tone: "border-red-200 bg-red-50 text-danger"
+    }
+  ];
+
+  function selectCompany(company: Company) {
+    onClose();
+    onSelectCompany(company);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/20 p-4">
+      <div className="max-h-[86vh] w-full max-w-5xl overflow-y-auto rounded-lg bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between border-b border-line bg-white p-5">
+          <div>
+            <div className="text-xs font-semibold text-muted">月次パイプライン内訳</div>
+            <h3 className="mt-1 text-lg font-semibold text-ink">{row.month}</h3>
+          </div>
+          <button onClick={onClose} className="grid size-8 place-items-center rounded-md border border-line hover:bg-panel" title="閉じる">
+            <X className="size-4" />
+          </button>
+        </div>
+        <div className="space-y-4 p-5">
+          <div className="grid gap-3 sm:grid-cols-4">
+            <MetricCard label="計画" value={`${num(row.targetCompanies)}社`} sub={row.plan?.memo || "月次目標"} />
+            <MetricCard label="実績" value={`${num(row.actualCompanies)}社`} sub={`差分 ${formatSignedNumber(row.gap)}社`} tone={row.gap >= 0 ? "good" : "warn"} />
+            <MetricCard label="ヨミ合計" value={`${num(row.pipelineStar3 + row.pipelineStar2 + row.pipelineStar1 + row.pipelineUnset)}社`} sub="契約予定日ベース" />
+            <MetricCard label="標準着地" value={`${num(row.standard)}社`} sub="実績 + ★★★ + ★★" tone={row.standardGap >= 0 ? "good" : "warn"} />
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {sections.map((section) => {
+              const sectionCompanies = section.ids.map((id) => companies.find((company) => company.id === id)).filter(Boolean) as Company[];
+              return (
+                <Card key={section.title} className="overflow-hidden p-0">
+                  <div className="flex items-center justify-between border-b border-line bg-panel px-4 py-3">
+                    <div>
+                      <div className="text-sm font-semibold text-ink">{section.title}</div>
+                      <div className="mt-0.5 text-xs text-muted">{section.description}</div>
+                    </div>
+                    <Pill className={section.tone}>{num(sectionCompanies.length)}社</Pill>
+                  </div>
+                  <div className="divide-y divide-line">
+                    {sectionCompanies.length === 0 ? <div className="p-4 text-sm text-muted">対象企業はありません。</div> : null}
+                    {sectionCompanies.map((company) => (
+                      <button
+                        key={company.id}
+                        type="button"
+                        onClick={() => selectCompany(company)}
+                        className="grid w-full gap-3 px-4 py-3 text-left text-sm transition hover:bg-yellow-50 sm:grid-cols-[1fr_auto] sm:items-center"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-ink">{company.name}</div>
+                          <div className="mt-1 text-xs text-muted">{company.industry} / {company.area} / {company.owner}</div>
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            <Pill className={phaseStyle[getClientPhase(company)]}>{formatClientPhaseOption(getClientPhase(company))}</Pill>
+                            <ForecastPill rating={getForecastRating(company)} />
+                          </div>
+                        </div>
+                        <div className="text-left text-xs text-muted sm:text-right">
+                          <div className="font-semibold text-ink">{yen(company.expectedMrr)}</div>
+                          <div>契約予定 {company.contractTargetDate ?? "-"}</div>
+                          <div>申込回収 {company.applicationReceivedDate ?? "-"}</div>
+                          <div>契約開始 {company.contractStartDate ?? "-"}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SidePanel({ title, open, onClose, children }: { title: string; open: boolean; onClose: () => void; children: React.ReactNode }) {
   if (!open) return null;
 
@@ -2252,6 +2393,10 @@ function createEmptyBusinessPlanRow(month: string): BusinessPlanRow {
     pipelineStar2: 0,
     pipelineStar1: 0,
     pipelineUnset: 0,
+    pipelineStar3CompanyIds: [],
+    pipelineStar2CompanyIds: [],
+    pipelineStar1CompanyIds: [],
+    pipelineUnsetCompanyIds: [],
     conservative: 0,
     standard: 0,
     upside: 0,
